@@ -1,0 +1,21 @@
+# rhdh app config file
+# minimal merge for Keycloak catalog integration e2e tests
+# auth is provided by rhdh.configure({ auth: "keycloak" })
+
+app:
+  title: RHDH Keycloak Catalog Test Instance
+auth:
+  environment: development
+  providers:
+    guest:
+      dangerouslyAllowOutsideDevelopment: true
+    oidc:
+      development:
+        metadataUrl: ${KEYCLOAK_METADATA_URL}
+        clientId: ${KEYCLOAK_CLIENT_ID}
+        clientSecret: ${KEYCLOAK_CLIENT_SECRET}
+        prompt: auto
+        callbackUrl: ${RHDH_BASE_URL}/api/auth/oidc/handler/frame
+        signIn:
+          resolvers:
+            - resolver: emailLocalPartMatchingUserEntityName
