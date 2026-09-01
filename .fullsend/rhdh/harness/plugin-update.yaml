@@ -27,6 +27,15 @@ host_files:
     dest: /sandbox/workspace/.env.d/rhdh-toolchain.env
   - src: rhdh/env/yarn-proxy.env
     dest: /sandbox/workspace/.env.d/yarn-proxy.env
+  - src: rhdh/env/gcp-vertex.env
+    dest: /sandbox/workspace/.env.d/gcp-vertex.env
+    expand: true
+  - src: ${GOOGLE_APPLICATION_CREDENTIALS}
+    dest: /tmp/.gcp-credentials.json
+    optional: true
+  - src: ${GCP_OIDC_TOKEN_FILE}
+    dest: /tmp/.gcp-oidc-token
+    optional: true
 
 skills:
   - skills/e2e-failure-analysis
@@ -47,6 +56,10 @@ env:
     GITHUB_ISSUE_URL: "${GITHUB_ISSUE_URL}"
     FULLSEND_OUTPUT_SCHEMA: ${FULLSEND_DIR}/rhdh/schemas/plugin-update-result.schema.json
   sandbox:
+    CLAUDE_CODE_USE_VERTEX: "1"
+    ANTHROPIC_VERTEX_PROJECT_ID: "${ANTHROPIC_VERTEX_PROJECT_ID}"
+    CLOUD_ML_REGION: "${CLOUD_ML_REGION}"
+    GOOGLE_APPLICATION_CREDENTIALS: "/tmp/.gcp-credentials.json"
     SKILL_DIR: /sandbox/claude-config/skills/e2e-failure-analysis
     PLAYWRIGHT_BROWSERS_PATH: /tmp/playwright-browsers
     GH_TOKEN: "${GH_TOKEN}"
