@@ -179,29 +179,35 @@ if [[ "${MODIFIED_COUNT}" -gt 0 ]]; then
     fi
   done
   
-  echo "Staging and committing remediations..."
+  # Check out target PR branch cleanly
+  PR_HEAD_REF="$(gh pr view "${PR_NUMBER}" --repo "${REPO_FULL_NAME}" --json headRefName --jq '.headRefName')"
+  echo "Checking out PR branch: ${PR_HEAD_REF}..."
+  git fetch origin "${PR_HEAD_REF}"
+  git checkout "${PR_HEAD_REF}"
   git reset --quiet || true
 
+  echo "Staging remediations from extracted sandbox..."
   for f in "${FILES[@]}"; do
     src_file=""
     # Check if file exists in extracted container download directories
-    for cand in /tmp/fs-*/target-repo/"${f}" /tmp/fs-*/"${f}" target-repo/"${f}"; do
+    for cand in /tmp/fs-*/target-repo/"${f}" /tmp/fs-*/"${f}"; do
       if [[ -f "${cand}" ]]; then
         src_file="${cand}"
         break
       fi
     done
 
-    if [[ -n "${src_file}" && "${src_file}" != "${f}" ]]; then
-      echo "Copying extracted file ${src_file} -> ${f}"
-      mkdir -p "$(dirname "${f}")"
-      cp "${src_file}" "${f}"
+    if [[ -z "${src_file}" ]]; then
+      src_file="$(find /tmp/fs-* -path "*/${f}" -type f 2>/dev/null | head -1 || true)"
     fi
 
-    if [[ -f "${f}" ]]; then
-      git add "${f}"
+    if [[ -n "${src_file}" ]]; then
+      echo "Applying remediation: ${src_file} -> ${f}"
+      mkdir -p "$(dirname "${f}")"
+      cp -f "${src_file}" "${f}"
+      git add -- "${f}"
     else
-      echo "::warning::File ${f} not found to stage"
+      echo "::warning::Extracted file not found for ${f}"
     fi
   done
   
@@ -213,9 +219,7 @@ if [[ "${MODIFIED_COUNT}" -gt 0 ]]; then
     echo "No staged file changes to commit."
   else
     git commit -m "${COMMIT_MSG}" -m "Assisted-By: fullsend-ai (plugin-update agent)"
-    echo "Pushing changes to PR branch..."
-    # Push to PR head branch using authenticated token
-    PR_HEAD_REF="$(gh pr view "${PR_NUMBER}" --repo "${REPO_FULL_NAME}" --json headRefName --jq '.headRefName')"
+    echo "Pushing changes to PR branch ${PR_HEAD_REF}..."
     PUSH_URL="https://x-access-token:${PUSH_TOKEN}@github.com/${REPO_FULL_NAME}.git"
     git push "${PUSH_URL}" "HEAD:${PR_HEAD_REF}"
     echo "Pushed commit to ${PR_HEAD_REF}"
