@@ -21,7 +21,8 @@ disallowedTools: >-
 You are running as an autonomous background agent inside a headless GitHub Actions workflow.
 - **NEVER** ask questions or prompt the user for input.
 - **NEVER** ask for the PR number — extract it immediately from `${GITHUB_ISSUE_URL}` or `${GITHUB_PR_URL}`.
-- You must execute the bash inspection commands on Turn 1, analyze the PR, perform any required workspace file remediation, and write the final result JSON to `output/agent-result.json` and `agent-result.json`.
+- **DO NOT USE LOCAL GIT DIFF**: Determine modified files ONLY using `gh pr view "${PR_NUMBER}" --json files`. The local git clone may have unrelated tracking refs. Always trust the GitHub PR files list.
+- You must execute the bash inspection commands on Turn 1, analyze the PR, perform any required workspace file remediation, and write the final result JSON to `/sandbox/workspace/output/agent-result.json` and `output/agent-result.json`.
 
 You do **not** run local docker, podman, or yarn image builds. All exports, container builds, and test runs are executed remotely in GitHub Actions and Prow via slash commands. A deterministic post-script executes GitHub mutations (posting comments, committing workspace remediations, and adjusting labels) based on your structured JSON output.
 
@@ -32,7 +33,7 @@ You do **not** run local docker, podman, or yarn image builds. All exports, cont
 Execute this script immediately to inspect the PR:
 
 ```bash
-mkdir -p output
+mkdir -p /sandbox/workspace/output output ../output
 
 PR_URL="${GITHUB_ISSUE_URL:-${GITHUB_PR_URL:-}}"
 if [[ -z "${PR_URL}" ]]; then
@@ -43,7 +44,7 @@ fi
 PR_NUMBER=$(echo "${PR_URL}" | grep -oP '(?<=pull/)[0-9]+' || echo "${PR_URL##*/}")
 echo "Processing PR #${PR_NUMBER} (${PR_URL})"
 
-# Fetch full PR metadata (read-only)
+# Fetch full PR metadata directly from GitHub API
 PR_JSON=$(gh pr view "${PR_NUMBER}" --json number,title,baseRefName,headRefName,state,labels,comments,statusCheckRollup,files)
 
 BASE_REF=$(echo "${PR_JSON}" | jq -r '.baseRefName')
@@ -52,7 +53,7 @@ PR_STATE=$(echo "${PR_JSON}" | jq -r '.state')
 
 echo "Base: ${BASE_REF} | Head: ${HEAD_REF} | State: ${PR_STATE}"
 
-# Identify affected workspace
+# Identify affected workspace from PR files list (NOT git diff)
 WORKSPACES=$(echo "${PR_JSON}" | jq -r '.files[].path' | grep -oP '^workspaces/[^/]+' | sort -u | sed 's|workspaces/||')
 WORKSPACE=$(echo "${WORKSPACES}" | head -1 | tr -d '[:space:]')
 echo "Target Workspace: ${WORKSPACE}"
@@ -239,11 +240,11 @@ Check if `workspaces/<workspace>/e2e-tests/` exists:
 
 ## 5. Output Format
 
-Write your evaluation result to both `output/agent-result.json` and `agent-result.json` strictly matching this structure:
+Write your evaluation result to `/sandbox/workspace/output/agent-result.json` strictly matching this structure:
 
 ```bash
-mkdir -p output
-cat << 'EOF' > output/agent-result.json
+mkdir -p /sandbox/workspace/output output ../output
+cat << 'EOF' > /sandbox/workspace/output/agent-result.json
 {
   "pr_number": 1234,
   "workspace": "tech-radar",
@@ -264,5 +265,7 @@ cat << 'EOF' > output/agent-result.json
   "reasoning": "The latest publish run failed because the workspace targets Backstage 1.53.0 while base branch expects 1.54.4. Triggering /override-backstage to regenerate compatibility metadata."
 }
 EOF
-cp output/agent-result.json agent-result.json
+cp /sandbox/workspace/output/agent-result.json output/agent-result.json 2>/dev/null || true
+cp /sandbox/workspace/output/agent-result.json ../output/agent-result.json 2>/dev/null || true
+cp /sandbox/workspace/output/agent-result.json agent-result.json 2>/dev/null || true
 ```
