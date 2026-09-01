@@ -180,6 +180,8 @@ if [[ "${MODIFIED_COUNT}" -gt 0 ]]; then
   done
   
   echo "Staging and committing remediations..."
+  git reset --quiet || true
+
   for f in "${FILES[@]}"; do
     src_file=""
     # Check if file exists in extracted container download directories
@@ -212,9 +214,10 @@ if [[ "${MODIFIED_COUNT}" -gt 0 ]]; then
   else
     git commit -m "${COMMIT_MSG}" -m "Assisted-By: fullsend-ai (plugin-update agent)"
     echo "Pushing changes to PR branch..."
-    # Push to PR head branch
+    # Push to PR head branch using authenticated token
     PR_HEAD_REF="$(gh pr view "${PR_NUMBER}" --repo "${REPO_FULL_NAME}" --json headRefName --jq '.headRefName')"
-    git push origin "HEAD:${PR_HEAD_REF}"
+    PUSH_URL="https://x-access-token:${PUSH_TOKEN}@github.com/${REPO_FULL_NAME}.git"
+    git push "${PUSH_URL}" "HEAD:${PR_HEAD_REF}"
     echo "Pushed commit to ${PR_HEAD_REF}"
   fi
 fi

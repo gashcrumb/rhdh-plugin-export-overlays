@@ -58,6 +58,7 @@ Thumbs.db
 
 # Build outputs
 build/
+output/
 *.tsbuildinfo
 
 # Coverage
