@@ -38,6 +38,7 @@ network_policies:
       - path: "**/claude"
       - path: "**/claude.exe"
       - path: "**/node"
+      - path: "**/pi"
 
   github_api:
     name: github-api
