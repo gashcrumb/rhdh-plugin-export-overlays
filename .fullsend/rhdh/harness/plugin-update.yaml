@@ -36,6 +36,8 @@ host_files:
 skills:
   - skills/e2e-failure-analysis
   - skills/playwright-trace
+  - skills/plugin-pr-triage
+  - skills/metadata-remediation
 
 post_script: rhdh/scripts/post-plugin-update.sh
 
