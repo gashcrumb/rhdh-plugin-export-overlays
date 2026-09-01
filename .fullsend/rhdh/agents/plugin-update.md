@@ -134,7 +134,7 @@ If `/publish` has not been executed on the latest commit of the PR, you MUST iss
 - The `/publish` workflow is the authoritative build gate and generates the test OCI container images required for smoke tests, E2E tests, and manual verification by maintainers.
 - Remediation commands like `/override-backstage` or `/update-versions` must ONLY be issued in response to actual bot comments reporting those specific failures.
 
-Inspect PR comments for bot comments containing `[Publish workflow]`, `#### Publishing process`, or `### Action 'publish' Execution Result`:
+Inspect PR comments for bot comments containing `[Publish workflow]`, `[Override Backstage workflow]`, `#### Publishing process`, or `### Action 'publish' Execution Result`:
 
 1. **No Publish Comment Found / Commits pushed after last publish**:
    - Status: `pending_ci`
@@ -142,21 +142,26 @@ Inspect PR comments for bot comments containing `[Publish workflow]`, `#### Publ
    - Slash Command: `/publish`
    - Reasoning: Initial or updated publish required to build test OCI images.
 
-2. **Publish Failed with Backstage Version Incompatibility**:
+2. **Publish Failed with Backstage Version Incompatibility (and no `backstage.json` exists yet)**:
    - Detection: Comment contains `#### Backstage-incompatible workspaces` listing the target workspace, `Backstage version mismatch`, or `is not compatible with targeted Backstage version`.
-   - Remediation: Post `/override-backstage` (creates `workspaces/<workspace>/backstage.json` with compatible version overrides).
+   - Remediation: If `workspaces/<workspace>/backstage.json` does not exist on the PR branch, post `/override-backstage` (creates `backstage.json` on the branch).
    - Stage: `publish_evaluation`
    - Status: `pending_ci`
    - Slash Command: `/override-backstage`
    - Guardrail: Maximum 2 `/override-backstage` invocations per PR.
 
-3. **Publish Failed with Metadata Validation Errors (OCI reference or Schema)**:
-   - Detection: Comment contains `#### Metadata Validation` with `❌ Found X validation error(s)` (e.g., OCI reference mismatch).
+3. **Override Backstage Partially Completed / Metadata Refresh Failed / Metadata Validation Errors**:
+   - Detection: Comment contains `[Override Backstage workflow] partially completed`, `Metadata refresh failed`, or `#### Metadata Validation` with `❌ Found X validation error(s)` (e.g., OCI reference mismatch).
    - Remediation:
-     - If Backstage incompatibility is also present, `/override-backstage` will regenerate and fix metadata alignment.
-     - Otherwise, edit `spec.dynamicArtifact` in `workspaces/<workspace>/metadata/*.yaml` to match the expected format, add the modified file(s) to `modified_files`, and emit `slash_command: "/publish"`.
-   - Stage: `publish_evaluation`
-   - Status: `remediation_applied` (if files modified) or `pending_ci` (if issuing `/override-backstage`).
+     - Read target Backstage version from `workspaces/<workspace>/backstage.json` (or `source.json`).
+     - Reconcile every `workspaces/<workspace>/metadata/*.yaml` file:
+       - Set `spec.backstage.supportedVersions` to the target Backstage version.
+       - If validation reported OCI reference mismatch (`expected "oci://<expected-prefix>/<pkg>" but got "oci://<actual-prefix>/<pkg>"`), replace the OCI prefix in `spec.dynamicArtifact` with `<expected-prefix>`.
+     - Add all modified `workspaces/<workspace>/metadata/*.yaml` files to `modified_files`.
+     - Set `commit_message: "chore(${WORKSPACE}): reconcile metadata supportedVersions and dynamicArtifact refs"`.
+     - Stage: `publish_evaluation`
+     - Status: `remediation_applied`
+     - Slash Command: `/publish`
 
 4. **Publish Failed with Stale `versions.json`**:
    - Detection: Comment indicates `versions.json does not match base branch`.

@@ -131,3 +131,25 @@ Create `workspaces/<workspace>/backstage.json`:
 }
 ```
 Add `workspaces/<workspace>/backstage.json` to `modified_files` and issue `slash_command: "/publish"`.
+
+---
+
+## 6. Reconciling Metadata YAML After Version Override or Publish Errors
+
+When `backstage.json` is created or after `/override-backstage` completes partially:
+
+1. **Determine Target Backstage Version**:
+   - If `workspaces/<workspace>/backstage.json` exists, use `.version` (e.g., `1.54.4`).
+   - Else, use `repo-backstage-version` from `workspaces/<workspace>/source.json`.
+
+2. **Inspect and Update each `workspaces/<workspace>/metadata/*.yaml`**:
+   - Update `spec.backstage.supportedVersions` to match the target Backstage version.
+   - Update `spec.dynamicArtifact`:
+     - If the publish validation comment reported `expected "oci://<expected-prefix>/<pkg>" but got "oci://<actual-prefix>/<pkg>"`, update the OCI prefix to match `<expected-prefix>`.
+     - Standard format: `oci://<registry-repo>/<pkg-slug>:bs_<backstage-version>__<pkg-version>!<pkg-slug>`
+   - Verify `spec.version` matches the plugin version in `package.json` / `plugins-list.yaml`.
+
+3. **Stage and Emit**:
+   - Add all modified `workspaces/<workspace>/metadata/*.yaml` paths to `modified_files`.
+   - Set `commit_message: "chore(${WORKSPACE}): reconcile metadata supportedVersions and dynamicArtifact refs"`.
+   - Set `stage: "publish_evaluation"`, `status: "remediation_applied"`, and `slash_command: "/publish"`.

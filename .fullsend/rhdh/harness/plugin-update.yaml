@@ -21,7 +21,14 @@ trigger: >
     || (event.transition.kind == "comment_added" && (
         (has(event.transition.comment.command) && event.transition.comment.command == "/fs-plugin-update")
         || (
-            (event.transition.comment.body.contains("Publish workflow") || event.transition.comment.body.contains("Action 'publish'") || event.transition.comment.body.contains("Action 'smoketest'") || event.transition.comment.body.contains("Action 'override-backstage'"))
+            (
+              event.transition.comment.body.contains("Publish workflow")
+              || event.transition.comment.body.contains("Override Backstage workflow")
+              || event.transition.comment.body.contains("Action 'publish'")
+              || event.transition.comment.body.contains("Action 'smoketest'")
+              || event.transition.comment.body.contains("Action 'override-backstage'")
+              || event.transition.comment.body.contains("Smoke Test Summary")
+            )
             && !event.transition.comment.body.contains("<!-- fullsend:")
            )
        ))
