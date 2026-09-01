@@ -1,0 +1,142 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "plugin-update-result.schema.json",
+  "title": "Plugin Update Agent Result",
+  "description": "Structured output from the plugin-update agent evaluating and driving an automated workspace update pull request.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "pr_number",
+    "workspace",
+    "status",
+    "stage",
+    "reasoning"
+  ],
+  "properties": {
+    "pr_number": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "The pull request number being processed."
+    },
+    "workspace": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "description": "The workspace affected by this PR (e.g., backstage, tech-radar, keycloak)."
+    },
+    "stage": {
+      "type": "string",
+      "enum": [
+        "initial_assessment",
+        "publish_evaluation",
+        "smoke_test_evaluation",
+        "e2e_test_evaluation",
+        "completed",
+        "escalated"
+      ],
+      "description": "The current stage in the plugin update lifecycle."
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pending_ci",
+        "remediation_applied",
+        "ready_for_review",
+        "ready_for_merge",
+        "escalate_to_human",
+        "superseded_close"
+      ],
+      "description": "Outcome/status classification determined by the agent."
+    },
+    "slash_command": {
+      "type": ["string", "null"],
+      "enum": [
+        "/publish",
+        "/override-backstage",
+        "/update-versions",
+        "/update-commit",
+        "/smoketest",
+        "/test",
+        "/test e2e-ocp-helm",
+        "/ok-to-test",
+        "/retest",
+        null
+      ],
+      "description": "Slash command to post on the PR, or null if no command is needed."
+    },
+    "comment_body": {
+      "type": ["string", "null"],
+      "maxLength": 16384,
+      "description": "Optional comment body to post on the PR (e.g., triage summary or escalation explanation)."
+    },
+    "modified_files": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^workspaces/[a-zA-Z0-9_-]+/(metadata/[a-zA-Z0-9_.-]+\\.ya?ml|backstage\\.json|smoke-tests/test\\.env|e2e-tests/.*)$"
+      },
+      "maxItems": 50,
+      "description": "List of relative file paths modified by the agent for remediation."
+    },
+    "commit_message": {
+      "type": ["string", "null"],
+      "maxLength": 256,
+      "description": "Commit message if files were modified."
+    },
+    "labels_to_add": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "maxLength": 64
+      },
+      "maxItems": 10,
+      "description": "Labels to apply to the PR."
+    },
+    "labels_to_remove": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "maxLength": 64
+      },
+      "maxItems": 10,
+      "description": "Labels to remove from the PR."
+    },
+    "diagnostics": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "publish_status": {
+          "type": "string",
+          "enum": ["none", "in_progress", "succeeded", "failed", "backstage_mismatch", "versions_mismatch"]
+        },
+        "smoke_test_status": {
+          "type": "string",
+          "enum": ["none", "in_progress", "passed", "failed", "skipped"]
+        },
+        "e2e_test_status": {
+          "type": "string",
+          "enum": ["not_applicable", "none", "in_progress", "passed", "failed"]
+        },
+        "publish_run_url": {
+          "type": ["string", "null"]
+        },
+        "smoke_run_url": {
+          "type": ["string", "null"]
+        },
+        "prow_job_url": {
+          "type": ["string", "null"]
+        },
+        "details": {
+          "type": "string",
+          "maxLength": 4096
+        }
+      }
+    },
+    "reasoning": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4096,
+      "description": "Detailed reasoning behind the agent's assessment and next step."
+    }
+  }
+}

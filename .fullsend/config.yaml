@@ -16,6 +16,8 @@ agents:
       source: rhdh/harness/review.yaml
     - name: e2e-triage
       source: rhdh/harness/e2e-triage.yaml
+    - name: plugin-update
+      source: rhdh/harness/plugin-update.yaml
 roles:
     - triage
     - coder
@@ -23,6 +25,7 @@ roles:
     - fix
     - retro
     - prioritize
+    - plugin-update
 allowed_remote_resources:
     - https://raw.githubusercontent.com/fullsend-ai/fullsend/
     - https://raw.githubusercontent.com/fullsend-ai/agents/

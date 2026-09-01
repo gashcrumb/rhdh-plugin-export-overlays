@@ -1,0 +1,70 @@
+---
+# harness/plugin-update.yaml — Automated plugin update PR handler agent.
+#
+# Flow: sandbox (agent) → post_script
+#   agent       : analyzes PR state, evaluates publish/smoke/e2e CI, applies workspace metadata/env remediations, and emits directives
+#   post_script : executes PR comments (slash commands), commits workspace fixes if any, and updates labels
+#
+# The agent operates within a single affected workspace and never runs local image builds.
+agent: rhdh/agents/plugin-update.md
+model: opus
+image: ghcr.io/redhat-developer/rhdh-fullsend-code:latest
+policy: rhdh/policies/plugin-update.yaml
+
+role: plugin-update
+slug: fullsend-ai-plugin-update
+
+trigger: |
+  event.entity.kind == "pull_request"
+  && (event.transition.kind == "opened" || event.transition.kind == "synchronize" || event.transition.kind == "labeled")
+  && event.entity.labels.contains("workspace-update")
+
+host_files:
+  - src: rhdh/env/rhdh-toolchain.env
+    dest: /sandbox/workspace/.env.d/rhdh-toolchain.env
+  - src: rhdh/env/yarn-proxy.env
+    dest: /sandbox/workspace/.env.d/yarn-proxy.env
+  - src: env/gcp-vertex.env
+    dest: /sandbox/workspace/.env.d/gcp-vertex.env
+    expand: true
+  - src: ${GOOGLE_APPLICATION_CREDENTIALS}
+    dest: /tmp/.gcp-credentials.json
+  - src: ${GCP_OIDC_TOKEN_FILE}
+    dest: /tmp/.gcp-oidc-token
+    optional: true
+
+skills:
+  - skills/e2e-failure-analysis
+  - skills/playwright-trace
+
+post_script: rhdh/scripts/post-plugin-update.sh
+
+validation_loop:
+  script: rhdh/scripts/validate-output-schema.sh
+  max_iterations: 2
+
+env:
+  runner:
+    GH_TOKEN: ${GH_TOKEN}
+    REPO_FULL_NAME: redhat-developer/rhdh-plugin-export-overlays
+    GITHUB_PR_URL: "${GITHUB_PR_URL}"
+    FULLSEND_OUTPUT_SCHEMA: ${FULLSEND_DIR}/rhdh/schemas/plugin-update-result.schema.json
+  sandbox:
+    SKILL_DIR: /sandbox/claude-config/skills/e2e-failure-analysis
+    PLAYWRIGHT_BROWSERS_PATH: /tmp/playwright-browsers
+    GH_TOKEN: "${GH_TOKEN}"
+    GITHUB_PR_URL: "${GITHUB_PR_URL}"
+    REPO_FULL_NAME: redhat-developer/rhdh-plugin-export-overlays
+
+timeout_minutes: 45
+
+forge:
+  github:
+    env:
+      runner:
+        REPO_FULL_NAME: "${REPO_FULL_NAME}"
+        GITHUB_PR_URL: "${GITHUB_PR_URL}"
+      sandbox:
+        REPO_FULL_NAME: "${REPO_FULL_NAME}"
+        GH_TOKEN: "${GH_TOKEN}"
+        GITHUB_PR_URL: "${GITHUB_PR_URL}"

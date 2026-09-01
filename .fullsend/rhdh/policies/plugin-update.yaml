@@ -1,0 +1,114 @@
+---
+version: 1
+
+# Sandbox policy for the plugin-update agent.
+#
+# Allows:
+#   - Vertex AI (LLM inference)
+#   - GitHub API (read-only for PR/issue/repo inspection; mutations happen in post-script)
+#   - Upstream GitHub repositories (read-only for inspecting upstream package.json at pinned repo-ref)
+#   - Package registries (read-only for inspecting package metadata and types if needed)
+#   - Prow artifacts (read-only for evaluating E2E test logs when triage is required)
+
+filesystem_policy:
+  include_workdir: true
+  read_only: [/usr, /lib, /proc, /dev/urandom, /app, /etc, /var/log]
+  read_write: [/sandbox, /tmp, /dev/null]
+landlock:
+  compatibility: best_effort
+process:
+  run_as_user: sandbox
+  run_as_group: sandbox
+
+network_policies:
+  vertex_ai:
+    name: vertex-ai
+    endpoints:
+      - host: "api.anthropic.com"
+        port: 443
+        protocol: rest
+        enforcement: enforce
+        access: read-write
+      - host: "*.googleapis.com"
+        port: 443
+        protocol: rest
+        enforcement: enforce
+        access: read-write
+    binaries:
+      - path: "**/claude"
+      - path: "**/claude.exe"
+      - path: "**/node"
+
+  github_api:
+    name: github-api
+    endpoints:
+      - host: "api.github.com"
+        port: 443
+        protocol: rest
+        enforcement: enforce
+        access: read-only
+      - host: "github.com"
+        port: 443
+        protocol: rest
+        enforcement: enforce
+        access: read-only
+      - host: "raw.githubusercontent.com"
+        port: 443
+        protocol: rest
+        enforcement: enforce
+        access: read-only
+    binaries:
+      - path: "**/curl"
+      - path: "**/gh"
+      - path: "**/git"
+      - path: "**/node"
+
+  package_registries:
+    name: package-registries
+    endpoints:
+      - host: "registry.npmjs.org"
+        port: 443
+        protocol: rest
+        enforcement: enforce
+        access: read-only
+        allow_encoded_slash: true
+      - host: "registry.yarnpkg.com"
+        port: 443
+        protocol: rest
+        enforcement: enforce
+        access: read-only
+      - host: "repo.yarnpkg.com"
+        port: 443
+        protocol: rest
+        enforcement: enforce
+        access: read-only
+    binaries:
+      - path: "**/npm"
+      - path: "**/npx"
+      - path: "**/yarn"
+      - path: "**/yarnpkg"
+      - path: "**/corepack"
+      - path: "**/node"
+
+  prow_artifacts:
+    name: prow-artifacts
+    endpoints:
+      - host: "prow.ci.openshift.org"
+        port: 443
+        protocol: rest
+        enforcement: enforce
+        access: read-only
+      - host: "gcsweb-ci.apps.ci.l2s4.p1.openshiftapps.com"
+        port: 443
+        protocol: rest
+        enforcement: enforce
+        access: read-only
+      - host: "storage.googleapis.com"
+        port: 443
+        protocol: rest
+        enforcement: enforce
+        access: read-only
+    binaries:
+      - path: "**/curl"
+      - path: "**/node"
+      - path: "**/gcloud"
