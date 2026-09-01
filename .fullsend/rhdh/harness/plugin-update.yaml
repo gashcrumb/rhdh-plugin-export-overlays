@@ -7,7 +7,7 @@
 #
 # The agent operates within a single affected workspace and never runs local image builds.
 agent: rhdh/agents/plugin-update.md
-model: sonnet
+model: haiku
 image: ghcr.io/redhat-developer/rhdh-fullsend-code:latest
 policy: rhdh/policies/plugin-update.yaml
 
@@ -58,7 +58,8 @@ env:
   sandbox:
     CLAUDE_CODE_USE_VERTEX: "1"
     ANTHROPIC_VERTEX_PROJECT_ID: "${ANTHROPIC_VERTEX_PROJECT_ID}"
-    CLOUD_ML_REGION: "${CLOUD_ML_REGION}"
+    CLOUD_ML_REGION: "global"
+    VERTEX_LOCATION: "global"
     GOOGLE_APPLICATION_CREDENTIALS: "/tmp/.gcp-credentials.json"
     SKILL_DIR: /sandbox/claude-config/skills/e2e-failure-analysis
     PLAYWRIGHT_BROWSERS_PATH: /tmp/playwright-browsers
