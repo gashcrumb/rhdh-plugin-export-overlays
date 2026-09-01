@@ -28,12 +28,17 @@
       "type": "string",
       "enum": [
         "initial_assessment",
+        "initial_evaluation",
         "initialization",
         "publish_evaluation",
+        "publish",
         "smoke_test_evaluation",
+        "smoke_test",
         "e2e_test_evaluation",
+        "e2e_test",
         "completed",
-        "escalated"
+        "escalated",
+        "pending_ci"
       ],
       "description": "The current stage in the plugin update lifecycle."
     },
@@ -46,7 +51,8 @@
         "ready_for_merge",
         "escalate_to_human",
         "superseded_close",
-        "skip"
+        "skip",
+        "error"
       ],
       "description": "Outcome/status classification determined by the agent."
     },

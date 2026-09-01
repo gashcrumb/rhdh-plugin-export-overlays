@@ -259,34 +259,59 @@ Check if `workspaces/<workspace>/e2e-tests/` exists:
 
 ---
 
-## 5. Output Format
+## 5. Output Format & Validation
 
-Write your evaluation result to `/sandbox/workspace/output/agent-result.json` strictly matching this structure:
+Write your evaluation result to `/sandbox/workspace/output/agent-result.json` strictly matching this specification:
 
+### 5.1 Allowed Field Values Reference
+- **`pr_number`** (integer, required): Must be `>= 1`.
+- **`workspace`** (string, required): Designated workspace name (e.g., `tech-radar`).
+- **`stage`** (string, required): One of:
+  - `"initial_assessment"` (first evaluation of a new/updated PR before publish)
+  - `"publish_evaluation"` (evaluating container export results)
+  - `"smoke_test_evaluation"` (evaluating container boot results)
+  - `"e2e_test_evaluation"` (evaluating Playwright E2E results)
+  - `"completed"` (all required checks passed)
+  - `"escalated"` (blocked or requires manual intervention)
+- **`status`** (string, required): One of:
+  - `"pending_ci"` (issued a command like `/publish` or `/override-backstage`; awaiting CI)
+  - `"remediation_applied"` (committed metadata fixes or dummy test.env)
+  - `"ready_for_review"` (all checks green, ready for maintainers)
+  - `"ready_for_merge"` (merge ready)
+  - `"escalate_to_human"` (unresolvable error or retry threshold exceeded)
+  - `"superseded_close"` (superseded by a newer PR)
+  - `"skip"` (out of scope)
+- **`slash_command`** (string or null): `"/publish"` | `"/override-backstage"` | `"/update-versions"` | `"/update-commit"` | `"/smoketest"` | `"/test e2e-ocp-helm"` | `"/retest"` | `null`
+- **`reasoning`** (string, required): Concise explanation of the findings and rationale.
+
+### 5.2 Output Creation Script
 ```bash
 mkdir -p /sandbox/workspace/output output ../output
 cat << 'EOF' > /sandbox/workspace/output/agent-result.json
 {
-  "pr_number": 1234,
+  "pr_number": 42,
   "workspace": "tech-radar",
-  "stage": "publish_evaluation",
+  "stage": "initial_assessment",
   "status": "pending_ci",
-  "slash_command": "/override-backstage",
+  "slash_command": "/publish",
   "comment_body": null,
   "modified_files": [],
   "commit_message": null,
   "labels_to_add": [],
   "labels_to_remove": [],
   "diagnostics": {
-    "publish_status": "backstage_mismatch",
-    "smoke_test_status": "none",
-    "e2e_test_status": "none",
-    "details": "Backstage 1.54.4 version mismatch detected; issuing /override-backstage"
+    "publish_status": "not_started",
+    "smoke_test_status": "not_started",
+    "e2e_test_status": "not_started",
+    "details": "PR #42 updates tech-radar workspace. No publish comment found on latest commit; triggering /publish."
   },
-  "reasoning": "The latest publish run failed because the workspace targets Backstage 1.53.0 while base branch expects 1.54.4. Triggering /override-backstage to regenerate compatibility metadata."
+  "reasoning": "PR #42 introduces updated source.json and metadata versions for tech-radar. Since /publish has not yet run on the latest commit, issuing /publish to initiate OCI image building."
 }
 EOF
 cp /sandbox/workspace/output/agent-result.json output/agent-result.json 2>/dev/null || true
 cp /sandbox/workspace/output/agent-result.json ../output/agent-result.json 2>/dev/null || true
 cp /sandbox/workspace/output/agent-result.json agent-result.json 2>/dev/null || true
+
+# Self-check JSON parsing
+python3 -m json.tool /sandbox/workspace/output/agent-result.json >/dev/null && echo "agent-result.json is valid JSON"
 ```
