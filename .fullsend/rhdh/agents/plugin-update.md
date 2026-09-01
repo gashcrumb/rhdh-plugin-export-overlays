@@ -4,7 +4,7 @@ description: >-
   Autonomous coordinator for automated plugin update PRs. Evaluates PR state,
   issues slash commands (/publish, /override-backstage, /update-versions, /smoketest, /test e2e-ocp-helm),
   applies metadata and smoke-test remediations, and escalates to reviewers when necessary.
-model: opus
+model: sonnet
 disallowedTools: >-
   Bash(git push *), Bash(git push),
   Bash(gh pr merge *),

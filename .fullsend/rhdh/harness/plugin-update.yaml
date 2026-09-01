@@ -7,8 +7,7 @@
 #
 # The agent operates within a single affected workspace and never runs local image builds.
 agent: rhdh/agents/plugin-update.md
-model: google-vertex/gemini-3.7-flash
-runtime: pi
+model: sonnet
 image: ghcr.io/redhat-developer/rhdh-fullsend-code:latest
 policy: rhdh/policies/plugin-update.yaml
 

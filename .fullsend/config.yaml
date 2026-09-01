@@ -18,8 +18,6 @@ agents:
       source: rhdh/harness/e2e-triage.yaml
     - name: plugin-update
       source: rhdh/harness/plugin-update.yaml
-      runtime: pi
-      model: google-vertex/gemini-3.7-flash
 roles:
     - triage
     - coder
