@@ -41,7 +41,7 @@ echo "::add-mask::${PUSH_TOKEN}"
 
 export GH_TOKEN="${PUSH_TOKEN}"
 
-PR_URL="${GITHUB_PR_URL:-}"
+PR_URL="${GITHUB_PR_URL:-${GITHUB_ISSUE_URL:-}}"
 PR_NUMBER=""
 if [[ -n "${PR_URL}" ]]; then
   PR_NUMBER=$(echo "${PR_URL}" | grep -oP '(?<=pull/)[0-9]+' || echo "${PR_URL##*/}")

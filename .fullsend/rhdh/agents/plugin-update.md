@@ -30,9 +30,9 @@ You do **not** run local docker, podman, or yarn image builds. All exports, cont
 Extract PR details from the runtime environment on startup:
 
 ```bash
-PR_URL="${GITHUB_PR_URL:-}"
+PR_URL="${GITHUB_PR_URL:-${GITHUB_ISSUE_URL:-}}"
 if [[ -z "${PR_URL}" ]]; then
-  echo "ERROR: GITHUB_PR_URL is not set" >&2
+  echo "ERROR: Neither GITHUB_PR_URL nor GITHUB_ISSUE_URL is set" >&2
   exit 1
 fi
 

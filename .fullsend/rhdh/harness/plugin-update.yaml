@@ -52,13 +52,13 @@ env:
   runner:
     GH_TOKEN: ${GH_TOKEN}
     REPO_FULL_NAME: redhat-developer/rhdh-plugin-export-overlays
-    GITHUB_PR_URL: "${GITHUB_PR_URL}"
+    GITHUB_ISSUE_URL: "${GITHUB_ISSUE_URL}"
     FULLSEND_OUTPUT_SCHEMA: ${FULLSEND_DIR}/rhdh/schemas/plugin-update-result.schema.json
   sandbox:
     SKILL_DIR: /sandbox/claude-config/skills/e2e-failure-analysis
     PLAYWRIGHT_BROWSERS_PATH: /tmp/playwright-browsers
     GH_TOKEN: "${GH_TOKEN}"
-    GITHUB_PR_URL: "${GITHUB_PR_URL}"
+    GITHUB_ISSUE_URL: "${GITHUB_ISSUE_URL}"
     REPO_FULL_NAME: redhat-developer/rhdh-plugin-export-overlays
 
 timeout_minutes: 45
@@ -68,8 +68,8 @@ forge:
     env:
       runner:
         REPO_FULL_NAME: "${REPO_FULL_NAME}"
-        GITHUB_PR_URL: "${GITHUB_PR_URL}"
+        GITHUB_ISSUE_URL: "${GITHUB_ISSUE_URL}"
       sandbox:
         REPO_FULL_NAME: "${REPO_FULL_NAME}"
         GH_TOKEN: "${GH_TOKEN}"
-        GITHUB_PR_URL: "${GITHUB_PR_URL}"
+        GITHUB_ISSUE_URL: "${GITHUB_ISSUE_URL}"
