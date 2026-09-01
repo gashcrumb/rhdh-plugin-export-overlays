@@ -108,16 +108,13 @@
       "additionalProperties": true,
       "properties": {
         "publish_status": {
-          "type": ["string", "null"],
-          "enum": ["not_started", "not_evaluated", "none", "in_progress", "succeeded", "failed", "backstage_mismatch", "versions_mismatch", null]
+          "type": ["string", "null"]
         },
         "smoke_test_status": {
-          "type": ["string", "null"],
-          "enum": ["not_started", "not_evaluated", "none", "in_progress", "passed", "failed", "skipped", null]
+          "type": ["string", "null"]
         },
         "e2e_test_status": {
-          "type": ["string", "null"],
-          "enum": ["not_applicable", "not_started", "not_evaluated", "none", "in_progress", "passed", "failed", null]
+          "type": ["string", "null"]
         },
         "publish_run_url": {
           "type": ["string", "null"]

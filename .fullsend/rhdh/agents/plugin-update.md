@@ -128,12 +128,18 @@ echo "PR #${PR_NUMBER} | Workspace: ${WORKSPACE} | Base: ${BASE_REF} | Head: ${H
 
 ### 3.1 Evaluating Publish Status (`pr-actions.yaml`)
 
+**MANDATORY RULE — NEVER PREEMPTIVELY ASSUME PUBLISH FAILURE**:
+If `/publish` has not been executed on the latest commit of the PR, you MUST issue `/publish`.
+- Do NOT preemptively issue `/override-backstage` or assume version incompatibility beforehand.
+- The `/publish` workflow is the authoritative build gate and generates the test OCI container images required for smoke tests, E2E tests, and manual verification by maintainers.
+- Remediation commands like `/override-backstage` or `/update-versions` must ONLY be issued in response to actual bot comments reporting those specific failures.
+
 Inspect PR comments for bot comments containing `### Action 'publish' Execution Result`:
 
 1. **No Publish Comment Found / Commits pushed after last publish**:
    - Status: `pending_ci`
    - Slash Command: `/publish`
-   - Reasoning: Initial or updated publish required.
+   - Reasoning: Initial or updated publish required to build test OCI images.
 
 2. **Publish Failed with Backstage Version Incompatibility**:
    - Detection: Comment contains `Backstage version mismatch` or `is not compatible with targeted Backstage version`.
