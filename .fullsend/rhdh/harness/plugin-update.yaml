@@ -11,13 +11,16 @@ model: opus
 image: ghcr.io/redhat-developer/rhdh-fullsend-code:latest
 policy: rhdh/policies/plugin-update.yaml
 
-role: plugin-update
-slug: fullsend-ai-plugin-update
+role: coder
+slug: fullsend-ai-coder
 
-trigger: |
-  event.entity.kind == "pull_request"
-  && (event.transition.kind == "opened" || event.transition.kind == "synchronize" || event.transition.kind == "labeled")
-  && event.entity.labels.contains("workspace-update")
+trigger: >
+  (
+    (event.entity.kind == "change_proposal" && (event.transition.kind == "opened" || event.transition.kind == "synchronized"))
+    || (event.transition.kind == "label_changed" && event.transition.label.name == "workspace-update" && event.transition.label.action == "added")
+    || (event.transition.kind == "comment_added" && has(event.transition.comment.command) && event.transition.comment.command == "/fs-plugin-update")
+  )
+  && "workspace-update" in event.state.labels
 
 host_files:
   - src: rhdh/env/rhdh-toolchain.env
