@@ -28,6 +28,7 @@
       "type": "string",
       "enum": [
         "initial_assessment",
+        "initialization",
         "publish_evaluation",
         "smoke_test_evaluation",
         "e2e_test_evaluation",
@@ -44,7 +45,8 @@
         "ready_for_review",
         "ready_for_merge",
         "escalate_to_human",
-        "superseded_close"
+        "superseded_close",
+        "skip"
       ],
       "description": "Outcome/status classification determined by the agent."
     },
@@ -103,19 +105,19 @@
     },
     "diagnostics": {
       "type": "object",
-      "additionalProperties": false,
+      "additionalProperties": true,
       "properties": {
         "publish_status": {
-          "type": "string",
-          "enum": ["none", "in_progress", "succeeded", "failed", "backstage_mismatch", "versions_mismatch"]
+          "type": ["string", "null"],
+          "enum": ["not_started", "not_evaluated", "none", "in_progress", "succeeded", "failed", "backstage_mismatch", "versions_mismatch", null]
         },
         "smoke_test_status": {
-          "type": "string",
-          "enum": ["none", "in_progress", "passed", "failed", "skipped"]
+          "type": ["string", "null"],
+          "enum": ["not_started", "not_evaluated", "none", "in_progress", "passed", "failed", "skipped", null]
         },
         "e2e_test_status": {
-          "type": "string",
-          "enum": ["not_applicable", "none", "in_progress", "passed", "failed"]
+          "type": ["string", "null"],
+          "enum": ["not_applicable", "not_started", "not_evaluated", "none", "in_progress", "passed", "failed", null]
         },
         "publish_run_url": {
           "type": ["string", "null"]
@@ -127,8 +129,7 @@
           "type": ["string", "null"]
         },
         "details": {
-          "type": "string",
-          "maxLength": 4096
+          "type": ["string", "object", "null"]
         }
       }
     },
