@@ -181,8 +181,25 @@ if [[ "${MODIFIED_COUNT}" -gt 0 ]]; then
   
   echo "Staging and committing remediations..."
   for f in "${FILES[@]}"; do
+    src_file=""
+    # Check if file exists in extracted container download directories
+    for cand in /tmp/fs-*/target-repo/"${f}" /tmp/fs-*/"${f}" target-repo/"${f}"; do
+      if [[ -f "${cand}" ]]; then
+        src_file="${cand}"
+        break
+      fi
+    done
+
+    if [[ -n "${src_file}" && "${src_file}" != "${f}" ]]; then
+      echo "Copying extracted file ${src_file} -> ${f}"
+      mkdir -p "$(dirname "${f}")"
+      cp "${src_file}" "${f}"
+    fi
+
     if [[ -f "${f}" ]]; then
       git add "${f}"
+    else
+      echo "::warning::File ${f} not found to stage"
     fi
   done
   
