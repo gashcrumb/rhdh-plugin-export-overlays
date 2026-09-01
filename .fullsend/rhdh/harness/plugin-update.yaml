@@ -23,6 +23,9 @@ trigger: >
   && "workspace-update" in event.state.labels
 
 host_files:
+  - src: /tmp/workspace/pr-input.json
+    dest: /sandbox/workspace/pr-input.json
+    optional: true
   - src: rhdh/env/rhdh-toolchain.env
     dest: /sandbox/workspace/.env.d/rhdh-toolchain.env
   - src: rhdh/env/yarn-proxy.env
@@ -43,6 +46,7 @@ skills:
   - skills/plugin-pr-triage
   - skills/metadata-remediation
 
+pre_script: rhdh/scripts/pre-plugin-update.sh
 post_script: rhdh/scripts/post-plugin-update.sh
 
 validation_loop:

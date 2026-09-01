@@ -42,28 +42,36 @@ Execute this script immediately to inspect the PR:
 ```bash
 mkdir -p /sandbox/workspace/output output ../output
 
-PR_URL="${GITHUB_ISSUE_URL:-${GITHUB_PR_URL:-}}"
-if [[ -z "${PR_URL}" ]]; then
-  echo "ERROR: GITHUB_ISSUE_URL is not set" >&2
-  exit 1
+# 1. Read pre-populated PR input file prepared by pre-script
+if [[ -f "/sandbox/workspace/pr-input.json" ]]; then
+  INPUT_FILE="/sandbox/workspace/pr-input.json"
+elif [[ -f "pr-input.json" ]]; then
+  INPUT_FILE="pr-input.json"
+else
+  INPUT_FILE=""
 fi
 
-PR_NUMBER=$(echo "${PR_URL}" | grep -oP '(?<=pull/)[0-9]+' || echo "${PR_URL##*/}")
-echo "Processing PR #${PR_NUMBER} (${PR_URL})"
+if [[ -n "${INPUT_FILE}" ]]; then
+  echo "Reading PR context from ${INPUT_FILE}..."
+  PR_NUMBER=$(jq -r '.pr.number' "${INPUT_FILE}")
+  WORKSPACE=$(jq -r '.affected_workspace' "${INPUT_FILE}")
+  BASE_REF=$(jq -r '.pr.baseRefName' "${INPUT_FILE}")
+  HEAD_REF=$(jq -r '.pr.headRefName' "${INPUT_FILE}")
+  PR_STATE=$(jq -r '.pr.state' "${INPUT_FILE}")
+  HAS_E2E=$(jq -r '.has_e2e_tests' "${INPUT_FILE}")
+  PR_JSON=$(jq '.pr' "${INPUT_FILE}")
+else
+  # Fallback to direct gh command if input file not mounted
+  PR_URL="${GITHUB_ISSUE_URL:-${GITHUB_PR_URL:-}}"
+  PR_NUMBER=$(echo "${PR_URL}" | grep -oP '(?<=pull/)[0-9]+' || echo "${PR_URL##*/}")
+  PR_JSON=$(gh pr view "${PR_NUMBER}" --json number,title,baseRefName,headRefName,state,labels,comments,files)
+  WORKSPACE=$(echo "${PR_JSON}" | jq -r '.files[].path' | grep -oP '^workspaces/[^/]+' | sort -u | sed 's|workspaces/||' | head -1 | tr -d '[:space:]')
+  BASE_REF=$(echo "${PR_JSON}" | jq -r '.baseRefName')
+  HEAD_REF=$(echo "${PR_JSON}" | jq -r '.headRefName')
+  PR_STATE=$(echo "${PR_JSON}" | jq -r '.state')
+fi
 
-# Fetch full PR metadata directly from GitHub API
-PR_JSON=$(gh pr view "${PR_NUMBER}" --json number,title,baseRefName,headRefName,state,labels,comments,statusCheckRollup,files)
-
-BASE_REF=$(echo "${PR_JSON}" | jq -r '.baseRefName')
-HEAD_REF=$(echo "${PR_JSON}" | jq -r '.headRefName')
-PR_STATE=$(echo "${PR_JSON}" | jq -r '.state')
-
-echo "Base: ${BASE_REF} | Head: ${HEAD_REF} | State: ${PR_STATE}"
-
-# Identify affected workspace from PR files list (NOT git diff)
-WORKSPACES=$(echo "${PR_JSON}" | jq -r '.files[].path' | grep -oP '^workspaces/[^/]+' | sort -u | sed 's|workspaces/||')
-WORKSPACE=$(echo "${WORKSPACES}" | head -1 | tr -d '[:space:]')
-echo "Target Workspace: ${WORKSPACE}"
+echo "PR #${PR_NUMBER} | Workspace: ${WORKSPACE} | Base: ${BASE_REF} | Head: ${HEAD_REF} | State: ${PR_STATE}"
 ```
 
 ---
