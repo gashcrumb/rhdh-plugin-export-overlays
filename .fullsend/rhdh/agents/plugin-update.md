@@ -134,52 +134,44 @@ If `/publish` has not been executed on the latest commit of the PR, you MUST iss
 - The `/publish` workflow is the authoritative build gate and generates the test OCI container images required for smoke tests, E2E tests, and manual verification by maintainers.
 - Remediation commands like `/override-backstage` or `/update-versions` must ONLY be issued in response to actual bot comments reporting those specific failures.
 
-Inspect PR comments for bot comments containing `### Action 'publish' Execution Result`:
+Inspect PR comments for bot comments containing `[Publish workflow]`, `#### Publishing process`, or `### Action 'publish' Execution Result`:
 
 1. **No Publish Comment Found / Commits pushed after last publish**:
    - Status: `pending_ci`
+   - Stage: `initial_assessment`
    - Slash Command: `/publish`
    - Reasoning: Initial or updated publish required to build test OCI images.
 
 2. **Publish Failed with Backstage Version Incompatibility**:
-   - Detection: Comment contains `Backstage version mismatch` or `is not compatible with targeted Backstage version`.
+   - Detection: Comment contains `#### Backstage-incompatible workspaces` listing the target workspace, `Backstage version mismatch`, or `is not compatible with targeted Backstage version`.
    - Remediation: Post `/override-backstage` (creates `workspaces/<workspace>/backstage.json` with compatible version overrides).
+   - Stage: `publish_evaluation`
+   - Status: `pending_ci`
    - Slash Command: `/override-backstage`
    - Guardrail: Maximum 2 `/override-backstage` invocations per PR.
 
-3. **Publish Failed with Stale `versions.json`**:
-   - Detection: Comment indicates `versions.json` differs from base branch.
+3. **Publish Failed with Metadata Validation Errors (OCI reference or Schema)**:
+   - Detection: Comment contains `#### Metadata Validation` with `❌ Found X validation error(s)` (e.g., OCI reference mismatch).
+   - Remediation:
+     - If Backstage incompatibility is also present, `/override-backstage` will regenerate and fix metadata alignment.
+     - Otherwise, edit `spec.dynamicArtifact` in `workspaces/<workspace>/metadata/*.yaml` to match the expected format, add the modified file(s) to `modified_files`, and emit `slash_command: "/publish"`.
+   - Stage: `publish_evaluation`
+   - Status: `remediation_applied` (if files modified) or `pending_ci` (if issuing `/override-backstage`).
+
+4. **Publish Failed with Stale `versions.json`**:
+   - Detection: Comment indicates `versions.json does not match base branch`.
    - Remediation: Post `/update-versions`.
+   - Stage: `publish_evaluation`
+   - Status: `pending_ci`
    - Slash Command: `/update-versions`
 
-4. **Publish Failed with Missing `metadata/*.yaml`**:
-   - Detection: Comment contains `No Package entity found for exported plugin` or `missing metadata`.
-   - Remediation:
-     - Read `workspaces/<workspace>/source.json` to obtain `repo` and `repo-ref`.
-     - Inspect `workspaces/<workspace>/plugins-list.yaml` for missing packages.
-     - Fetch upstream `package.json` at pinned `repo-ref` from GitHub (e.g., via `curl https://raw.githubusercontent.com/<org>/<repo>/<ref>/<path>/package.json`).
-     - Create `workspaces/<workspace>/metadata/<pkg-name>.yaml` using standard Package entity format:
-       ```yaml
-       apiVersion: rhdh.redhat.com/v1alpha1
-       kind: Package
-       metadata:
-         name: <package-name>
-       spec:
-         packageName: "<full-npm-name>"
-         version: "<version>"
-         dynamicArtifact: "oci://ghcr.io/redhat-developer/rhdh-plugin-export-overlays/<pkg-name>:pr_${PR_NUMBER}__<version>"
-         backstage:
-           role: "<frontend-plugin|backend-plugin|backend-plugin-module>"
-         support: community
-         appConfigExamples: []
-       ```
-     - Add created file to `modified_files` and set `commit_message: "chore(${WORKSPACE}): add missing Package metadata for <pkg-name>"`.
-     - Slash Command: `/publish`
-
-5. **Publish Failed with Malformed `appConfigExamples`**:
-   - Detection: Schema validation failure on `workspaces/<workspace>/metadata/*.yaml`.
-   - Remediation: Fix YAML syntax and indentation in `appConfigExamples`.
-   - Stage modified files and re-run `/publish`.
+5. **Publish Succeeded ✅**:
+   - Detection: `Publishing process: ✅ Finished successfully` with 0 validation errors and no incompatible workspaces.
+   - Stage: `publish_evaluation`
+   - Next Action:
+     - If smoke test has not yet run: Issue `/smoketest`.
+     - If smoke test already passed and `has_e2e_tests: true`: Issue `/test e2e-ocp-helm`.
+     - If all tests complete: Set `stage: "completed"`, `status: "ready_for_review"`.
 
 ---
 

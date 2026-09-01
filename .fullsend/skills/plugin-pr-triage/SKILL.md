@@ -26,32 +26,40 @@ echo "${PR_JSON}" | jq -r '.comments[].body'
 
 ---
 
-## 2. Parsing Publish Results (`pr-actions.yaml`)
+## 2. Parsing Publish Results (`pr-actions.yaml` or `Publish workflow`)
 
-Look for comments with `### Action 'publish' Execution Result`:
+Look for comments with `[Publish workflow]` or `### Action 'publish' Execution Result`:
 
 ```bash
 LAST_PUBLISH_COMMENT=$(echo "${PR_JSON}" | jq -r '
-  [.comments[] | select(.body | contains("### Action '\''publish'\'' Execution Result"))] | last | .body // empty
+  [.comments[] | select(.body | contains("[Publish workflow]") or contains("### Action '\''publish'\'' Execution Result") or contains("#### Publishing process"))] | last | .body // empty
 ')
 ```
 
 ### Analysis Heuristics:
-1. **Success**:
-   - Contains: `✅ All requested packages were exported successfully` or table of published OCI tags (`ghcr.io/redhat-developer/rhdh-plugin-export-overlays/<pkg>:pr_${PR_NUMBER}__...`).
-   - Outcome: Proceed to smoke testing or E2E testing.
-2. **Backstage Version Mismatch**:
-   - Contains: `is not compatible with targeted Backstage version` or `Backstage version mismatch`.
-   - Outcome: Issue `/override-backstage`.
+1. **Backstage Version Incompatibility**:
+   - Indicator: Contains `#### Backstage-incompatible workspaces` listing the PR's workspace (e.g., `workspaces/<workspace> | 1.53.0`), or `is not compatible with targeted Backstage version`.
+   - Action: Issue `/override-backstage`.
+   - Outcome: `stage: "publish_evaluation"`, `status: "pending_ci"`, `slash_command: "/override-backstage"`.
+2. **Metadata Validation Errors**:
+   - Indicator: Contains `#### Metadata Validation` with `❌ Found X validation error(s)`.
+   - Specific Error Types:
+     - *OCI reference mismatch* (e.g., `expected "oci://ghcr.io/..." but got "... "`):
+       - If accompanied by Backstage incompatibility, `/override-backstage` will fix and re-align tags.
+       - Otherwise, update `spec.dynamicArtifact` in `workspaces/<workspace>/metadata/*.yaml` to match expected tags and issue `/publish`.
+     - *Missing Package metadata* (`No Package entity found for exported plugin <pkg>` or missing YAML):
+       - Use `metadata-remediation` skill to generate `metadata/<pkg>.yaml`, stage file, and issue `/publish`.
+     - *YAML / Schema syntax errors*:
+       - Correct invalid YAML syntax in `workspaces/<workspace>/metadata/*.yaml`, stage file, and issue `/publish`.
 3. **Stale `versions.json`**:
-   - Contains: `versions.json does not match base branch`.
-   - Outcome: Issue `/update-versions`.
-4. **Missing Package Metadata**:
-   - Contains: `No Package entity found for exported plugin <pkg>` or `missing metadata/<pkg>.yaml`.
-   - Outcome: Use `metadata-remediation` skill to generate `metadata/<pkg>.yaml` and re-run `/publish`.
-5. **YAML / Schema Error in Metadata**:
-   - Contains: `YAML parsing error` or `failed validation against schema`.
-   - Outcome: Fix YAML syntax in `workspaces/<workspace>/metadata/*.yaml` and re-run `/publish`.
+   - Indicator: Contains `versions.json does not match base branch`.
+   - Action: Issue `/update-versions`.
+4. **Publish Succeeded (Green)**:
+   - Indicator: `Publishing process: ✅ Finished successfully` with `0` validation errors and no incompatible workspaces.
+   - Action:
+     - If smoke test not yet run: Issue `/smoketest`.
+     - If smoke test already passed and `has_e2e_tests: true`: Issue `/test e2e-ocp-helm`.
+     - If all tests complete: Set `status: "ready_for_review"`.
 
 ---
 

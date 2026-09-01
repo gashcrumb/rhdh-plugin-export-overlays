@@ -101,3 +101,33 @@ When `validate-app-config-examples.yaml` fails:
                baseUrl: https://example.com
    ```
 3. Indentation must be strictly 2 spaces, and keys must not contain raw tab characters.
+
+---
+
+## 4. Remedying OCI Artifact References in Metadata
+
+When the publish workflow reports OCI reference mismatch:
+`expected "oci://<expected-registry-and-repo>/<pkg-slug>" but got "oci://<old-registry-and-repo>/<pkg-slug>"`
+
+Update `spec.dynamicArtifact` in `workspaces/<workspace>/metadata/<pkg-slug>.yaml`:
+
+```yaml
+spec:
+  dynamicArtifact: "oci://<expected-registry-and-repo>/<pkg-slug>:pr_${PR_NUMBER}__<pkg-version>"
+```
+
+Add the modified file path(s) to `modified_files` in `agent-result.json` and set `slash_command: "/publish"`.
+
+---
+
+## 5. Creating Local `backstage.json` Override
+
+When overriding Backstage compatibility directly without `/override-backstage`:
+
+Create `workspaces/<workspace>/backstage.json`:
+```json
+{
+  "version": "<target-backstage-version>"
+}
+```
+Add `workspaces/<workspace>/backstage.json` to `modified_files` and issue `slash_command: "/publish"`.

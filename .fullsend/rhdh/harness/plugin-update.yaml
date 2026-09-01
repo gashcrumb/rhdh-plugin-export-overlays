@@ -18,7 +18,13 @@ trigger: >
   (
     (event.entity.kind == "change_proposal" && (event.transition.kind == "opened" || event.transition.kind == "synchronized"))
     || (event.transition.kind == "label_changed" && event.transition.label.name == "workspace-update" && event.transition.label.action == "added")
-    || (event.transition.kind == "comment_added" && has(event.transition.comment.command) && event.transition.comment.command == "/fs-plugin-update")
+    || (event.transition.kind == "comment_added" && (
+        (has(event.transition.comment.command) && event.transition.comment.command == "/fs-plugin-update")
+        || (
+            (event.transition.comment.body.contains("Publish workflow") || event.transition.comment.body.contains("Action 'publish'") || event.transition.comment.body.contains("Action 'smoketest'") || event.transition.comment.body.contains("Action 'override-backstage'"))
+            && !event.transition.comment.body.contains("<!-- fullsend:")
+           )
+       ))
   )
   && "workspace-update" in event.state.labels
 
