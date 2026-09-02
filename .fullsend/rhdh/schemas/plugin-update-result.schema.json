@@ -81,7 +81,7 @@
       "type": "array",
       "items": {
         "type": "string",
-        "pattern": "^workspaces/[a-zA-Z0-9_-]+/(metadata/[a-zA-Z0-9_.-]+\\.ya?ml|backstage\\.json|smoke-tests/test\\.env|e2e-tests/.*)$"
+        "pattern": "^workspaces/[a-zA-Z0-9_-]+/(metadata/[a-zA-Z0-9_.-]+\\.ya?ml|source\\.json|plugins-list\\.ya?ml|backstage\\.json|smoke-tests/.*|e2e-tests/.*|patches/.*|plugins/.*)$"
       },
       "maxItems": 50,
       "description": "List of relative file paths modified by the agent for remediation."
