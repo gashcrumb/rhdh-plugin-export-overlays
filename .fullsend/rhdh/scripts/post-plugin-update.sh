@@ -47,7 +47,12 @@ if [[ -n "${PR_URL}" ]]; then
   PR_NUMBER=$(echo "${PR_URL}" | grep -oP '(?<=pull/)[0-9]+' || echo "${PR_URL##*/}")
 fi
 
-echo "[DEBUG] Runner CWD: $(pwd)"
+# Ensure working directory is anchored to the repository root
+ORIGINAL_CWD="$(pwd)"
+REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || echo "${GITHUB_WORKSPACE:-.}")"
+cd "${REPO_ROOT}"
+echo "[DEBUG] Original CWD: ${ORIGINAL_CWD}"
+echo "[DEBUG] Anchored to REPO_ROOT: $(pwd)"
 echo "[DEBUG] PR_NUMBER: ${PR_NUMBER} | REPO: ${REPO_FULL_NAME}"
 
 # ---------------------------------------------------------------------------
@@ -113,12 +118,25 @@ remove_label() {
 # 1. Locate agent-result.json
 # ---------------------------------------------------------------------------
 RESULT_FILE=""
-for dir in iteration-*/output output .; do
+SEARCH_DIRS=(
+  "${ORIGINAL_CWD}"
+  "${ORIGINAL_CWD}/iteration-1/output"
+  "${ORIGINAL_CWD}/output"
+  "${REPO_ROOT}/output"
+  "${REPO_ROOT}"
+  "."
+)
+
+for dir in "${SEARCH_DIRS[@]}" "${REPO_ROOT}"/output/fs-*/iteration-*/output "${REPO_ROOT}"/output/fs-*/output; do
   if [[ -f "${dir}/agent-result.json" ]]; then
     RESULT_FILE="${dir}/agent-result.json"
     break
   fi
 done
+
+if [[ -z "${RESULT_FILE}" ]]; then
+  RESULT_FILE="$(find "${REPO_ROOT}" "${ORIGINAL_CWD}" -name "agent-result.json" -type f 2>/dev/null | head -1 || true)"
+fi
 
 if [[ -z "${RESULT_FILE}" ]]; then
   echo "::warning::No agent-result.json found"
@@ -187,78 +205,71 @@ if [[ "${MODIFIED_COUNT}" -gt 0 ]]; then
   PR_HEAD_REF="$(gh pr view "${PR_NUMBER}" --repo "${REPO_FULL_NAME}" --json headRefName --jq '.headRefName')"
   echo "Target PR head branch: ${PR_HEAD_REF}"
 
-  TARGET_DIR="."
-  if [[ -d "target-repo/.git" ]]; then
-    TARGET_DIR="target-repo"
-  fi
-  echo "[DEBUG] Using TARGET_DIR: ${TARGET_DIR}"
+  cd "${REPO_ROOT}"
+  echo "[DEBUG] Operating in REPO_ROOT: $(pwd)"
+  echo "[DEBUG] Fetching origin ${PR_HEAD_REF}..."
+  git fetch origin "${PR_HEAD_REF}"
+  echo "[DEBUG] Checking out ${PR_HEAD_REF}..."
+  git checkout "${PR_HEAD_REF}"
+  
+  echo "[DEBUG] Disabling sparse checkout and unsetting sparse/ignore advice..."
+  git sparse-checkout disable 2>/dev/null || true
+  git config core.sparseCheckout false
+  git config advice.updateSparsePath false
+  git config advice.addIgnoredFile false
+  git reset --quiet || true
 
-  (
-    cd "${TARGET_DIR}"
-    echo "[DEBUG] In TARGET_DIR: $(pwd)"
-    echo "[DEBUG] Fetching origin ${PR_HEAD_REF}..."
-    git fetch origin "${PR_HEAD_REF}"
-    echo "[DEBUG] Checking out ${PR_HEAD_REF}..."
-    git checkout "${PR_HEAD_REF}"
-    
-    echo "[DEBUG] Disabling sparse checkout and unsetting sparse/ignore advice..."
-    git sparse-checkout disable 2>/dev/null || true
-    git config core.sparseCheckout false
-    git config advice.updateSparsePath false
-    git config advice.addIgnoredFile false
-    git reset --quiet || true
+  # Ensure any accidental output/ entries are unstaged
+  git rm -rf --cached output 2>/dev/null || true
+  git reset -- output 2>/dev/null || true
 
-    echo "[DEBUG] Available /tmp/fs-* directories:"
-    ls -la /tmp/fs-* 2>/dev/null || echo "[DEBUG] No /tmp/fs-* found via ls"
-
-    echo "Staging remediations from extracted sandbox into ${TARGET_DIR}..."
-    for f in "${FILES[@]}"; do
-      src_file=""
-      # Check if file exists in extracted container download directories
-      for cand in /tmp/fs-*/target-repo/"${f}" /tmp/fs-*/"${f}"; do
-        echo "[DEBUG] Checking candidate: ${cand}"
-        if [[ -f "${cand}" ]]; then
-          src_file="${cand}"
-          echo "[DEBUG] Found match at candidate: ${src_file}"
-          break
-        fi
-      done
-
-      if [[ -z "${src_file}" ]]; then
-        src_file="$(find /tmp/fs-* -path "*/${f}" -type f 2>/dev/null | head -1 || true)"
-        if [[ -n "${src_file}" ]]; then
-          echo "[DEBUG] Found match via find: ${src_file}"
-        fi
-      fi
-
-      if [[ -n "${src_file}" ]]; then
-        echo "Applying remediation: ${src_file} -> ${f}"
-        mkdir -p "$(dirname "${f}")"
-        cp -fv "${src_file}" "${f}"
-        echo "[DEBUG] Staging with git add -f -- ${f}..."
-        git add -f -- "${f}"
-      else
-        echo "::warning::Extracted file not found for ${f}"
+  echo "Staging remediations from extracted sandbox into ${REPO_ROOT}..."
+  for f in "${FILES[@]}"; do
+    src_file=""
+    # Check if file exists in extracted container download directories
+    for cand in /tmp/fs-*/target-repo/"${f}" /tmp/fs-*/"${f}"; do
+      echo "[DEBUG] Checking candidate: ${cand}"
+      if [[ -f "${cand}" ]]; then
+        src_file="${cand}"
+        echo "[DEBUG] Found match at candidate: ${src_file}"
+        break
       fi
     done
-    
-    COMMIT_MSG="${COMMIT_MESSAGE:-chore(${WORKSPACE}): apply automated plugin update remediations}"
-    git config user.name "fullsend-ai[bot]"
-    git config user.email "fullsend-ai[bot]@users.noreply.github.com"
-    
-    echo "[DEBUG] Checking staged diff..."
-    git status --short
-    
-    if git diff --staged --quiet; then
-      echo "No staged file changes to commit."
-    else
-      git commit -m "${COMMIT_MSG}" -m "Assisted-By: fullsend-ai (plugin-update agent)"
-      echo "Pushing changes to PR branch ${PR_HEAD_REF}..."
-      PUSH_URL="https://x-access-token:${PUSH_TOKEN}@github.com/${REPO_FULL_NAME}.git"
-      git push "${PUSH_URL}" "HEAD:${PR_HEAD_REF}"
-      echo "Pushed commit to ${PR_HEAD_REF}"
+
+    if [[ -z "${src_file}" ]]; then
+      src_file="$(find /tmp/fs-* -path "*/${f}" -type f 2>/dev/null | head -1 || true)"
+      if [[ -n "${src_file}" ]]; then
+        echo "[DEBUG] Found match via find: ${src_file}"
+      fi
     fi
-  )
+
+    if [[ -n "${src_file}" ]]; then
+      echo "Applying remediation: ${src_file} -> ${REPO_ROOT}/${f}"
+      mkdir -p "${REPO_ROOT}/$(dirname "${f}")"
+      cp -fv "${src_file}" "${REPO_ROOT}/${f}"
+      echo "[DEBUG] Staging with git add -- ${f}..."
+      git add -- "${f}"
+    else
+      echo "::warning::Extracted file not found for ${f}"
+    fi
+  done
+  
+  COMMIT_MSG="${COMMIT_MESSAGE:-chore(${WORKSPACE}): apply automated plugin update remediations}"
+  git config user.name "fullsend-ai[bot]"
+  git config user.email "fullsend-ai[bot]@users.noreply.github.com"
+  
+  echo "[DEBUG] Staged status:"
+  git status --short
+  
+  if git diff --staged --quiet; then
+    echo "No staged file changes to commit."
+  else
+    git commit -m "${COMMIT_MSG}" -m "Assisted-By: fullsend-ai (plugin-update agent)"
+    echo "Pushing changes to PR branch ${PR_HEAD_REF}..."
+    PUSH_URL="https://x-access-token:${PUSH_TOKEN}@github.com/${REPO_FULL_NAME}.git"
+    git push "${PUSH_URL}" "HEAD:${PR_HEAD_REF}"
+    echo "Pushed commit to ${PR_HEAD_REF}"
+  fi
 fi
 
 # ---------------------------------------------------------------------------
