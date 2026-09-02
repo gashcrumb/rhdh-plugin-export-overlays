@@ -182,48 +182,59 @@ if [[ "${MODIFIED_COUNT}" -gt 0 ]]; then
   # Check out target PR branch cleanly
   PR_HEAD_REF="$(gh pr view "${PR_NUMBER}" --repo "${REPO_FULL_NAME}" --json headRefName --jq '.headRefName')"
   echo "Checking out PR branch: ${PR_HEAD_REF}..."
-  git fetch origin "${PR_HEAD_REF}"
-  git checkout "${PR_HEAD_REF}"
-  git reset --quiet || true
 
-  echo "Staging remediations from extracted sandbox..."
-  for f in "${FILES[@]}"; do
-    src_file=""
-    # Check if file exists in extracted container download directories
-    for cand in /tmp/fs-*/target-repo/"${f}" /tmp/fs-*/"${f}"; do
-      if [[ -f "${cand}" ]]; then
-        src_file="${cand}"
-        break
+  TARGET_DIR="."
+  if [[ -d "target-repo/.git" ]]; then
+    TARGET_DIR="target-repo"
+  fi
+
+  (
+    cd "${TARGET_DIR}"
+    git config advice.addIgnoredFile false
+    git sparse-checkout disable 2>/dev/null || true
+    git fetch origin "${PR_HEAD_REF}"
+    git checkout "${PR_HEAD_REF}"
+    git reset --quiet || true
+
+    echo "Staging remediations from extracted sandbox into ${TARGET_DIR}..."
+    for f in "${FILES[@]}"; do
+      src_file=""
+      # Check if file exists in extracted container download directories
+      for cand in /tmp/fs-*/target-repo/"${f}" /tmp/fs-*/"${f}"; do
+        if [[ -f "${cand}" ]]; then
+          src_file="${cand}"
+          break
+        fi
+      done
+
+      if [[ -z "${src_file}" ]]; then
+        src_file="$(find /tmp/fs-* -path "*/${f}" -type f 2>/dev/null | head -1 || true)"
+      fi
+
+      if [[ -n "${src_file}" ]]; then
+        echo "Applying remediation: ${src_file} -> ${f}"
+        mkdir -p "$(dirname "${f}")"
+        cp -f "${src_file}" "${f}"
+        git add -- "${f}"
+      else
+        echo "::warning::Extracted file not found for ${f}"
       fi
     done
-
-    if [[ -z "${src_file}" ]]; then
-      src_file="$(find /tmp/fs-* -path "*/${f}" -type f 2>/dev/null | head -1 || true)"
-    fi
-
-    if [[ -n "${src_file}" ]]; then
-      echo "Applying remediation: ${src_file} -> ${f}"
-      mkdir -p "$(dirname "${f}")"
-      cp -f "${src_file}" "${f}"
-      git add -- "${f}"
+    
+    COMMIT_MSG="${COMMIT_MESSAGE:-chore(${WORKSPACE}): apply automated plugin update remediations}"
+    git config user.name "fullsend-ai[bot]"
+    git config user.email "fullsend-ai[bot]@users.noreply.github.com"
+    
+    if git diff --staged --quiet; then
+      echo "No staged file changes to commit."
     else
-      echo "::warning::Extracted file not found for ${f}"
+      git commit -m "${COMMIT_MSG}" -m "Assisted-By: fullsend-ai (plugin-update agent)"
+      echo "Pushing changes to PR branch ${PR_HEAD_REF}..."
+      PUSH_URL="https://x-access-token:${PUSH_TOKEN}@github.com/${REPO_FULL_NAME}.git"
+      git push "${PUSH_URL}" "HEAD:${PR_HEAD_REF}"
+      echo "Pushed commit to ${PR_HEAD_REF}"
     fi
-  done
-  
-  COMMIT_MSG="${COMMIT_MESSAGE:-chore(${WORKSPACE}): apply automated plugin update remediations}"
-  git config user.name "fullsend-ai[bot]"
-  git config user.email "fullsend-ai[bot]@users.noreply.github.com"
-  
-  if git diff --staged --quiet; then
-    echo "No staged file changes to commit."
-  else
-    git commit -m "${COMMIT_MSG}" -m "Assisted-By: fullsend-ai (plugin-update agent)"
-    echo "Pushing changes to PR branch ${PR_HEAD_REF}..."
-    PUSH_URL="https://x-access-token:${PUSH_TOKEN}@github.com/${REPO_FULL_NAME}.git"
-    git push "${PUSH_URL}" "HEAD:${PR_HEAD_REF}"
-    echo "Pushed commit to ${PR_HEAD_REF}"
-  fi
+  )
 fi
 
 # ---------------------------------------------------------------------------
