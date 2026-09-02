@@ -47,6 +47,9 @@ if [[ -n "${PR_URL}" ]]; then
   PR_NUMBER=$(echo "${PR_URL}" | grep -oP '(?<=pull/)[0-9]+' || echo "${PR_URL##*/}")
 fi
 
+echo "[DEBUG] Runner CWD: $(pwd)"
+echo "[DEBUG] PR_NUMBER: ${PR_NUMBER} | REPO: ${REPO_FULL_NAME}"
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -173,6 +176,7 @@ if [[ "${MODIFIED_COUNT}" -gt 0 ]]; then
   # Ensure all modified files belong to the allowed workspace
   mapfile -t FILES < <(jq -r '.modified_files[]' "${RESULT_FILE}")
   for f in "${FILES[@]}"; do
+    echo "[DEBUG] Modified file declared by agent: ${f}"
     if [[ ! "${f}" =~ ^workspaces/${WORKSPACE}/ ]]; then
       echo "::error::Agent attempted to modify file outside designated workspace: ${f}"
       exit 1
@@ -181,43 +185,58 @@ if [[ "${MODIFIED_COUNT}" -gt 0 ]]; then
   
   # Check out target PR branch cleanly
   PR_HEAD_REF="$(gh pr view "${PR_NUMBER}" --repo "${REPO_FULL_NAME}" --json headRefName --jq '.headRefName')"
-  echo "Checking out PR branch: ${PR_HEAD_REF}..."
+  echo "Target PR head branch: ${PR_HEAD_REF}"
 
   TARGET_DIR="."
   if [[ -d "target-repo/.git" ]]; then
     TARGET_DIR="target-repo"
   fi
+  echo "[DEBUG] Using TARGET_DIR: ${TARGET_DIR}"
 
   (
     cd "${TARGET_DIR}"
+    echo "[DEBUG] In TARGET_DIR: $(pwd)"
+    echo "[DEBUG] Fetching origin ${PR_HEAD_REF}..."
     git fetch origin "${PR_HEAD_REF}"
+    echo "[DEBUG] Checking out ${PR_HEAD_REF}..."
     git checkout "${PR_HEAD_REF}"
+    
+    echo "[DEBUG] Disabling sparse checkout and unsetting sparse/ignore advice..."
     git sparse-checkout disable 2>/dev/null || true
     git config core.sparseCheckout false
     git config advice.updateSparsePath false
     git config advice.addIgnoredFile false
     git reset --quiet || true
 
+    echo "[DEBUG] Available /tmp/fs-* directories:"
+    ls -la /tmp/fs-* 2>/dev/null || echo "[DEBUG] No /tmp/fs-* found via ls"
+
     echo "Staging remediations from extracted sandbox into ${TARGET_DIR}..."
     for f in "${FILES[@]}"; do
       src_file=""
       # Check if file exists in extracted container download directories
       for cand in /tmp/fs-*/target-repo/"${f}" /tmp/fs-*/"${f}"; do
+        echo "[DEBUG] Checking candidate: ${cand}"
         if [[ -f "${cand}" ]]; then
           src_file="${cand}"
+          echo "[DEBUG] Found match at candidate: ${src_file}"
           break
         fi
       done
 
       if [[ -z "${src_file}" ]]; then
         src_file="$(find /tmp/fs-* -path "*/${f}" -type f 2>/dev/null | head -1 || true)"
+        if [[ -n "${src_file}" ]]; then
+          echo "[DEBUG] Found match via find: ${src_file}"
+        fi
       fi
 
       if [[ -n "${src_file}" ]]; then
         echo "Applying remediation: ${src_file} -> ${f}"
         mkdir -p "$(dirname "${f}")"
-        cp -f "${src_file}" "${f}"
-        git add -- "${f}"
+        cp -fv "${src_file}" "${f}"
+        echo "[DEBUG] Staging with git add -f -- ${f}..."
+        git add -f -- "${f}"
       else
         echo "::warning::Extracted file not found for ${f}"
       fi
@@ -226,6 +245,9 @@ if [[ "${MODIFIED_COUNT}" -gt 0 ]]; then
     COMMIT_MSG="${COMMIT_MESSAGE:-chore(${WORKSPACE}): apply automated plugin update remediations}"
     git config user.name "fullsend-ai[bot]"
     git config user.email "fullsend-ai[bot]@users.noreply.github.com"
+    
+    echo "[DEBUG] Checking staged diff..."
+    git status --short
     
     if git diff --staged --quiet; then
       echo "No staged file changes to commit."
