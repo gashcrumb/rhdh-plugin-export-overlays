@@ -1,0 +1,98 @@
+name: Plugin Update CI Bridge
+
+# Listens for CI workflow completions (Pull Request Actions, Run Workspace Smoke Tests)
+# and posts /fs-plugin-update via Fullsend App token so Fullsend autonomously
+# evaluates results and advances the PR lifecycle without manual prompts.
+
+on:
+  workflow_run:
+    workflows:
+      - "Pull Request Actions"
+      - "Run Workspace Smoke Tests"
+    types:
+      - completed
+
+permissions:
+  contents: read
+  id-token: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  bridge:
+    name: Bridge CI Completion to Fullsend
+    runs-on: ubuntu-latest
+    if: >-
+      github.event.workflow_run.conclusion == 'success' ||
+      github.event.workflow_run.conclusion == 'failure'
+    steps:
+      - name: Resolve Target PR
+        id: resolve-pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          WORKFLOW_NAME: ${{ github.event.workflow_run.name }}
+          RUN_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          DISPLAY_TITLE: ${{ github.event.workflow_run.display_title }}
+          HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          PR_LIST_JSON: ${{ toJSON(github.event.workflow_run.pull_requests) }}
+        run: |
+          set -euo pipefail
+          echo "Processing completion of '${WORKFLOW_NAME}' (conclusion: ${RUN_CONCLUSION})..."
+
+          PR_NUM=""
+          # 1. Try from workflow_run payload pull_requests
+          if [[ -n "${PR_LIST_JSON}" && "${PR_LIST_JSON}" != "[]" && "${PR_LIST_JSON}" != "null" ]]; then
+            PR_NUM=$(echo "${PR_LIST_JSON}" | jq -r '.[0].number // empty')
+          fi
+
+          # 2. Match open PRs by title or head branch
+          if [[ -z "${PR_NUM}" ]]; then
+            PR_NUM=$(gh pr list --repo "${REPO}" --state open --json number,title,headRefName \
+              --jq ".[] | select(.title == \"${DISPLAY_TITLE}\" or .headRefName == \"${HEAD_BRANCH}\") | .number" | head -1 || true)
+          fi
+
+          if [[ -z "${PR_NUM}" ]]; then
+            echo "::notice::No matching open PR found for workflow run — skipping bridge trigger"
+            echo "should_trigger=false" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+
+          # 3. Verify PR has workspace-update label
+          HAS_LABEL=$(gh pr view "${PR_NUM}" --repo "${REPO}" --json labels \
+            --jq '.labels[] | select(.name == "workspace-update") | .name' 2>/dev/null || true)
+
+          if [[ -z "${HAS_LABEL}" ]]; then
+            echo "::notice::PR #${PR_NUM} does not have 'workspace-update' label — skipping bridge trigger"
+            echo "should_trigger=false" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+
+          echo "Target PR identified: #${PR_NUM}"
+          echo "pr_number=${PR_NUM}" >> "${GITHUB_OUTPUT}"
+          echo "should_trigger=true" >> "${GITHUB_OUTPUT}"
+
+      - name: Mint Fullsend token
+        if: steps.resolve-pr.outputs.should_trigger == 'true'
+        id: mint-token
+        uses: fullsend-ai/fullsend/.github/actions/mint-token@84c8bbbb821ff85136854150b06740253709b3b8
+        continue-on-error: true
+        with:
+          role: coder
+          repos: ${{ github.event.repository.name }}
+          mint_url: ${{ vars.FULLSEND_MINT_URL }}
+
+      - name: Post Fullsend trigger comment
+        if: steps.resolve-pr.outputs.should_trigger == 'true'
+        env:
+          MINTED_TOKEN: ${{ steps.mint-token.outputs.token }}
+          DEFAULT_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ steps.resolve-pr.outputs.pr_number }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          TOKEN="${MINTED_TOKEN:-${DEFAULT_TOKEN}}"
+          echo "Posting /fs-plugin-update to PR #${PR_NUMBER}..."
+          GH_TOKEN="${TOKEN}" gh pr comment "${PR_NUMBER}" --repo "${REPO}" --body "/fs-plugin-update"
+          echo "Posted trigger comment to PR #${PR_NUMBER}"
