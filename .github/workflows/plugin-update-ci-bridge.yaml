@@ -1,8 +1,8 @@
 name: Plugin Update CI Bridge
 
 # Listens for CI workflow completions (Pull Request Actions, Run Workspace Smoke Tests)
-# and posts /fs-plugin-update via Fullsend App token so Fullsend autonomously
-# evaluates results and advances the PR lifecycle without manual prompts.
+# on PRs labeled workspace-update, and invokes the Fullsend plugin-update agent directly
+# via reusable-dispatch with a pre-computed matrix.
 
 on:
   workflow_run:
@@ -12,22 +12,25 @@ on:
     types:
       - completed
 
-permissions:
-  contents: read
-  id-token: write
-  issues: write
-  pull-requests: write
+permissions: {}
 
 jobs:
-  bridge:
-    name: Bridge CI Completion to Fullsend
+  prepare:
+    name: Prepare Bridge Matrix
     runs-on: ubuntu-latest
     if: >-
       github.event.workflow_run.conclusion == 'success' ||
       github.event.workflow_run.conclusion == 'failure'
+    permissions:
+      contents: read
+      pull-requests: read
+      issues: read
+    outputs:
+      should_trigger: ${{ steps.resolve.outputs.should_trigger }}
+      matrix: ${{ steps.resolve.outputs.matrix }}
     steps:
       - name: Resolve Target PR
-        id: resolve-pr
+        id: resolve
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
@@ -56,6 +59,7 @@ jobs:
           if [[ -z "${PR_NUM}" ]]; then
             echo "::notice::No matching open PR found for workflow run — skipping bridge trigger"
             echo "should_trigger=false" >> "${GITHUB_OUTPUT}"
+            echo "matrix={\"include\":[]}" >> "${GITHUB_OUTPUT}"
             exit 0
           fi
 
@@ -66,33 +70,72 @@ jobs:
           if [[ -z "${HAS_LABEL}" ]]; then
             echo "::notice::PR #${PR_NUM} does not have 'workspace-update' label — skipping bridge trigger"
             echo "should_trigger=false" >> "${GITHUB_OUTPUT}"
+            echo "matrix={\"include\":[]}" >> "${GITHUB_OUTPUT}"
             exit 0
           fi
 
-          echo "Target PR identified: #${PR_NUM}"
-          echo "pr_number=${PR_NUM}" >> "${GITHUB_OUTPUT}"
+          PR_DATA=$(gh pr view "${PR_NUM}" --repo "${REPO}" --json number,url,headRefOid,baseRefName)
+          PR_URL=$(echo "${PR_DATA}" | jq -r '.url')
+          PR_HEAD_SHA=$(echo "${PR_DATA}" | jq -r '.headRefOid')
+          PR_BASE_REF=$(echo "${PR_DATA}" | jq -r '.baseRefName')
+
+          PAYLOAD=$(jq -nc \
+            --arg pr_num "${PR_NUM}" \
+            --arg url "${PR_URL}" \
+            --arg head_sha "${PR_HEAD_SHA}" \
+            --arg base_ref "${PR_BASE_REF}" \
+            '{
+              issue: { number: ($pr_num | tonumber), html_url: $url },
+              pull_request: {
+                number: ($pr_num | tonumber),
+                html_url: $url,
+                head: { sha: $head_sha },
+                base: { ref: $base_ref }
+              }
+            }')
+
+          MATRIX=$(jq -nc \
+            --arg repo "${REPO}" \
+            --arg pr_num "${PR_NUM}" \
+            --arg payload "${PAYLOAD}" \
+            '{
+              include: [
+                {
+                  agent: "plugin-update",
+                  role: "coder",
+                  source_repo: $repo,
+                  status_repo: $repo,
+                  status_number: ($pr_num | tonumber),
+                  event_payload: $payload
+                }
+              ]
+            }')
+
+          echo "Target PR identified: #${PR_NUM} (${PR_URL})"
           echo "should_trigger=true" >> "${GITHUB_OUTPUT}"
+          echo "matrix=${MATRIX}" >> "${GITHUB_OUTPUT}"
 
-      - name: Mint Fullsend token
-        if: steps.resolve-pr.outputs.should_trigger == 'true'
-        id: mint-token
-        uses: fullsend-ai/fullsend/.github/actions/mint-token@84c8bbbb821ff85136854150b06740253709b3b8
-        continue-on-error: true
-        with:
-          role: coder
-          repos: ${{ github.event.repository.name }}
-          mint_url: ${{ vars.FULLSEND_MINT_URL }}
-
-      - name: Post Fullsend trigger comment
-        if: steps.resolve-pr.outputs.should_trigger == 'true'
-        env:
-          MINTED_TOKEN: ${{ steps.mint-token.outputs.token }}
-          DEFAULT_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ steps.resolve-pr.outputs.pr_number }}
-          REPO: ${{ github.repository }}
-        run: |
-          set -euo pipefail
-          TOKEN="${MINTED_TOKEN:-${DEFAULT_TOKEN}}"
-          echo "Posting /fs-plugin-update to PR #${PR_NUMBER}..."
-          GH_TOKEN="${TOKEN}" gh pr comment "${PR_NUMBER}" --repo "${REPO}" --body "/fs-plugin-update"
-          echo "Posted trigger comment to PR #${PR_NUMBER}"
+  dispatch:
+    name: Fullsend Dispatch
+    needs: [prepare]
+    if: needs.prepare.outputs.should_trigger == 'true'
+    permissions:
+      actions: write
+      id-token: write
+      contents: write
+      issues: write
+      packages: read
+      pull-requests: write
+    uses: fullsend-ai/fullsend/.github/workflows/reusable-dispatch.yml@84c8bbbb821ff85136854150b06740253709b3b8
+    with:
+      matrix: ${{ needs.prepare.outputs.matrix }}
+      install_mode: per-repo
+      mint_url: ${{ vars.FULLSEND_MINT_URL }}
+      gcp_region: ${{ vars.FULLSEND_GCP_REGION }}
+      project_number: ${{ vars.FULLSEND_PROJECT_NUMBER }}
+      runner_image: ubuntu-24.04
+    secrets:
+      FULLSEND_GCP_WIF_PROVIDER: ${{ secrets.FULLSEND_GCP_WIF_PROVIDER }}
+      FULLSEND_GCP_PROJECT_ID: ${{ secrets.FULLSEND_GCP_PROJECT_ID }}
+      OTEL_EXPORTER_OTLP_TRACES_HEADERS: ${{ secrets.OTEL_EXPORTER_OTLP_TRACES_HEADERS }}
+      OTEL_EXPORTER_OTLP_HEADERS: ${{ secrets.OTEL_EXPORTER_OTLP_HEADERS }}
