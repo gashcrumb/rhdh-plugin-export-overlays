@@ -142,35 +142,37 @@ Inspect PR comments for bot comments containing `[Publish workflow]`, `[Override
    - Slash Command: `/publish`
    - Reasoning: Initial or updated publish required to build test OCI images.
 
-2. **Publish Failed with Backstage Version Incompatibility (and no `backstage.json` exists yet)**:
-   - Detection: Comment contains `#### Backstage-incompatible workspaces` listing the target workspace, `Backstage version mismatch`, or `is not compatible with targeted Backstage version`.
-   - Remediation: If `workspaces/<workspace>/backstage.json` does not exist on the PR branch, post `/override-backstage` (creates `backstage.json` on the branch).
-   - Stage: `publish_evaluation`
-   - Status: `pending_ci`
-   - Slash Command: `/override-backstage`
-   - Guardrail: Maximum 2 `/override-backstage` invocations per PR.
+2. **Publish Reported Backstage Version Incompatibility or Metadata Validation Errors**:
+   - Detection: Comment contains `#### Backstage-incompatible workspaces` (listing the target workspace, regardless of mandatory status), `[Override Backstage workflow]`, or `#### Metadata Validation` with `❌ Found X validation error(s)` (e.g., OCI reference mismatch, version mismatch).
+   - **Remediation Procedure**:
+     1. **Target Backstage Version**: Extract target Backstage version (e.g. `1.54.4`) from the publish report (e.g. `incompatible with the target Backstage version (1.54.4)`).
+     2. **Create/Update `backstage.json`**: If `#### Backstage-incompatible workspaces` listed this workspace, create or update `workspaces/<workspace>/backstage.json`:
+        ```json
+        {
+          "version": "<target-backstage-version>"
+        }
+        ```
+     3. **Extract Published Package Versions**: Look at `#### Publishing process` -> `Published container images:` in the comment (e.g. `ghcr.io/.../<pkg-slug>:pr_<number>__<pkg-version>`).
+     4. **Reconcile Metadata YAML Files (`workspaces/<workspace>/metadata/*.yaml`)**:
+        - Set `spec.version` to `<pkg-version>` matching the published image tag.
+        - Set `spec.backstage.supportedVersions` to `<target-backstage-version>` (e.g., `1.54.4`).
+        - Set `spec.dynamicArtifact` to `oci://<expected-prefix>/<pkg-slug>:bs_<target-backstage-version>__<pkg-version>!<pkg-slug>`.
+        - **CRITICAL**: NEVER revert `spec.version` or `spec.backstage.supportedVersions` back to older values found in `source.json` or base branch.
+     5. **Stage and Emit**:
+        - Add `workspaces/<workspace>/backstage.json` (if created/updated) and all modified `workspaces/<workspace>/metadata/*.yaml` files to `modified_files`.
+        - Set `commit_message: "chore(${WORKSPACE}): override backstage compatibility to ${TARGET_BS_VERSION} and reconcile metadata"`.
+        - Stage: `publish_evaluation`
+        - Status: `remediation_applied`
+        - Slash Command: `/publish`
 
-3. **Override Backstage Partially Completed / Metadata Refresh Failed / Metadata Validation Errors**:
-   - Detection: Comment contains `[Override Backstage workflow] partially completed`, `Metadata refresh failed`, or `#### Metadata Validation` with `❌ Found X validation error(s)` (e.g., OCI reference mismatch).
-   - Remediation:
-     - Read target Backstage version from `workspaces/<workspace>/backstage.json` (or `source.json`).
-     - Reconcile every `workspaces/<workspace>/metadata/*.yaml` file:
-       - Set `spec.backstage.supportedVersions` to the target Backstage version.
-       - If validation reported OCI reference mismatch (`expected "oci://<expected-prefix>/<pkg>" but got "oci://<actual-prefix>/<pkg>"`), replace the OCI prefix in `spec.dynamicArtifact` with `<expected-prefix>`.
-     - Add all modified `workspaces/<workspace>/metadata/*.yaml` files to `modified_files`.
-     - Set `commit_message: "chore(${WORKSPACE}): reconcile metadata supportedVersions and dynamicArtifact refs"`.
-     - Stage: `publish_evaluation`
-     - Status: `remediation_applied`
-     - Slash Command: `/publish`
-
-4. **Publish Failed with Stale `versions.json`**:
+3. **Publish Failed with Stale `versions.json`**:
    - Detection: Comment indicates `versions.json does not match base branch`.
    - Remediation: Post `/update-versions`.
    - Stage: `publish_evaluation`
    - Status: `pending_ci`
    - Slash Command: `/update-versions`
 
-5. **Publish Succeeded ✅**:
+4. **Publish Succeeded ✅**:
    - Detection: `Publishing process: ✅ Finished successfully` with 0 validation errors and no incompatible workspaces.
    - Stage: `publish_evaluation`
    - Next Action:

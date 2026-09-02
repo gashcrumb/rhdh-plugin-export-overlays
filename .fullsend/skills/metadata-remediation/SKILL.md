@@ -104,52 +104,57 @@ When `validate-app-config-examples.yaml` fails:
 
 ---
 
-## 4. Remedying OCI Artifact References in Metadata
+## 4. Remedying OCI Artifact References and Versions in Metadata
 
-When the publish workflow reports OCI reference mismatch:
-`expected "oci://<expected-registry-and-repo>/<pkg-slug>" but got "oci://<old-registry-and-repo>/<pkg-slug>"`
+When the publish workflow reports OCI reference or version mismatches:
+- OCI mismatch: `expected "oci://<expected-prefix>/<pkg-slug>" but got "oci://<old-prefix>/<pkg-slug>"`
+- Version mismatch: `expected "<built-version>" but got "<old-version>"`
 
-Update `spec.dynamicArtifact` in `workspaces/<workspace>/metadata/<pkg-slug>.yaml`:
+Read the published images from `#### Publishing process` -> `Published container images:` in the publish comment (e.g., `<expected-prefix>/<pkg-slug>:pr_<number>__<pkg-version>`).
 
+Update `workspaces/<workspace>/metadata/<pkg-slug>.yaml`:
 ```yaml
 spec:
-  dynamicArtifact: "oci://<expected-registry-and-repo>/<pkg-slug>:pr_${PR_NUMBER}__<pkg-version>"
+  version: "<pkg-version>"
+  dynamicArtifact: "oci://<expected-prefix>/<pkg-slug>:bs_<target-backstage-version>__<pkg-version>!<pkg-slug>"
+  backstage:
+    supportedVersions: "<target-backstage-version>"
 ```
 
-Add the modified file path(s) to `modified_files` in `agent-result.json` and set `slash_command: "/publish"`.
+**CRITICAL RULE**: NEVER revert `spec.version` or `spec.backstage.supportedVersions` to older versions from `source.json` or base branch.
 
 ---
 
 ## 5. Creating Local `backstage.json` Override
 
-When overriding Backstage compatibility directly without `/override-backstage`:
+When the publish workflow reports `#### Backstage-incompatible workspaces`:
 
+Extract the target Backstage version from the publish comment (e.g., `1.54.4`).
 Create `workspaces/<workspace>/backstage.json`:
 ```json
 {
   "version": "<target-backstage-version>"
 }
 ```
-Add `workspaces/<workspace>/backstage.json` to `modified_files` and issue `slash_command: "/publish"`.
+Add `workspaces/<workspace>/backstage.json` to `modified_files`.
 
 ---
 
-## 6. Reconciling Metadata YAML After Version Override or Publish Errors
+## 6. Complete Single-Turn Reconciliation Recipe
 
-When `backstage.json` is created or after `/override-backstage` completes partially:
+When `/publish` reports Backstage version incompatibility AND metadata validation errors:
 
-1. **Determine Target Backstage Version**:
-   - If `workspaces/<workspace>/backstage.json` exists, use `.version` (e.g., `1.54.4`).
-   - Else, use `repo-backstage-version` from `workspaces/<workspace>/source.json`.
-
-2. **Inspect and Update each `workspaces/<workspace>/metadata/*.yaml`**:
-   - Update `spec.backstage.supportedVersions` to match the target Backstage version.
-   - Update `spec.dynamicArtifact`:
-     - If the publish validation comment reported `expected "oci://<expected-prefix>/<pkg>" but got "oci://<actual-prefix>/<pkg>"`, update the OCI prefix to match `<expected-prefix>`.
-     - Standard format: `oci://<registry-repo>/<pkg-slug>:bs_<backstage-version>__<pkg-version>!<pkg-slug>`
-   - Verify `spec.version` matches the plugin version in `package.json` / `plugins-list.yaml`.
-
-3. **Stage and Emit**:
-   - Add all modified `workspaces/<workspace>/metadata/*.yaml` paths to `modified_files`.
-   - Set `commit_message: "chore(${WORKSPACE}): reconcile metadata supportedVersions and dynamicArtifact refs"`.
+1. **Create `workspaces/<workspace>/backstage.json`**:
+   ```json
+   {
+     "version": "1.54.4"
+   }
+   ```
+2. **Update all `workspaces/<workspace>/metadata/*.yaml` files**:
+   - `spec.version`: matching the published container image version (e.g., `1.21.0`)
+   - `spec.backstage.supportedVersions`: target Backstage version (e.g., `1.54.4`)
+   - `spec.dynamicArtifact`: `oci://<expected-prefix>/<pkg-slug>:bs_<target-backstage-version>__<pkg-version>!<pkg-slug>`
+3. **Emit Result**:
+   - Add `workspaces/<workspace>/backstage.json` and all updated `metadata/*.yaml` files to `modified_files`.
+   - Set `commit_message: "chore(${WORKSPACE}): override backstage compatibility to ${TARGET_BS_VERSION} and reconcile metadata"`.
    - Set `stage: "publish_evaluation"`, `status: "remediation_applied"`, and `slash_command: "/publish"`.
