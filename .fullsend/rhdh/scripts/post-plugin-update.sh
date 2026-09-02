@@ -190,10 +190,12 @@ if [[ "${MODIFIED_COUNT}" -gt 0 ]]; then
 
   (
     cd "${TARGET_DIR}"
-    git config advice.addIgnoredFile false
-    git sparse-checkout disable 2>/dev/null || true
     git fetch origin "${PR_HEAD_REF}"
     git checkout "${PR_HEAD_REF}"
+    git sparse-checkout disable 2>/dev/null || true
+    git config core.sparseCheckout false
+    git config advice.updateSparsePath false
+    git config advice.addIgnoredFile false
     git reset --quiet || true
 
     echo "Staging remediations from extracted sandbox into ${TARGET_DIR}..."
