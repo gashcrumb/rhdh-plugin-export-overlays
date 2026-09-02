@@ -36,6 +36,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           WORKFLOW_NAME: ${{ github.event.workflow_run.name }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
           RUN_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
           DISPLAY_TITLE: ${{ github.event.workflow_run.display_title }}
           HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
@@ -73,6 +74,19 @@ jobs:
             echo "should_trigger=false" >> "${GITHUB_OUTPUT}"
             echo "matrix={\"include\":[]}" >> "${GITHUB_OUTPUT}"
             exit 0
+          fi
+
+          # 4. If Pull Request Actions completed with success and dispatched smoke tests,
+          # defer agent evaluation until Workspace Smoke Tests finishes to prevent race conditions.
+          if [[ "${WORKFLOW_NAME}" == "Pull Request Actions" ]]; then
+            SMOKE_DISPATCHED=$(gh api "repos/${REPO}/actions/runs/${RUN_ID}/jobs" \
+              --jq '.jobs[] | select(.name == "Trigger Smoke Tests" and .conclusion == "success") | .name' 2>/dev/null || true)
+            if [[ -n "${SMOKE_DISPATCHED}" ]]; then
+              echo "Publish succeeded and dispatched smoke tests — deferring agent evaluation until Workspace Smoke Tests completes."
+              echo "should_trigger=false" >> "${GITHUB_OUTPUT}"
+              echo "matrix={\"include\":[]}" >> "${GITHUB_OUTPUT}"
+              exit 0
+            fi
           fi
 
           PR_DATA=$(gh pr view "${PR_NUM}" --repo "${REPO}" --json number,url,headRefOid,baseRefName)
