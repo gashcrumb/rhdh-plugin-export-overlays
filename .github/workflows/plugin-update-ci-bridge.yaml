@@ -77,15 +77,29 @@ jobs:
           fi
 
           # 4. If Pull Request Actions completed with success and dispatched smoke tests,
-          # defer agent evaluation until Workspace Smoke Tests finishes to prevent race conditions.
+          # wait for Workspace Smoke Tests to complete before invoking Fullsend.
+          # (GitHub suppresses workflow_run for runs dispatched by GITHUB_TOKEN, so we wait here).
           if [[ "${WORKFLOW_NAME}" == "Pull Request Actions" ]]; then
             SMOKE_DISPATCHED=$(gh api "repos/${REPO}/actions/runs/${RUN_ID}/jobs" \
               --jq '.jobs[] | select(.name == "Trigger Smoke Tests" and .conclusion == "success") | .name' 2>/dev/null || true)
             if [[ -n "${SMOKE_DISPATCHED}" ]]; then
-              echo "Publish succeeded and dispatched smoke tests — deferring agent evaluation until Workspace Smoke Tests completes."
-              echo "should_trigger=false" >> "${GITHUB_OUTPUT}"
-              echo "matrix={\"include\":[]}" >> "${GITHUB_OUTPUT}"
-              exit 0
+              echo "Publish succeeded and dispatched smoke tests — waiting for Workspace Smoke Tests to complete..."
+              # Wait up to 10 minutes for smoke test workflow to complete (typically ~1.5 - 2 mins)
+              for i in {1..120}; do
+                SMOKE_RUN=$(gh run list --repo "${REPO}" --workflow "workspace-tests.yaml" --limit 1 \
+                  --json status,conclusion,createdAt --jq '.[0]' 2>/dev/null || echo "{}")
+                STATUS=$(echo "${SMOKE_RUN}" | jq -r '.status // empty')
+                CONCLUSION=$(echo "${SMOKE_RUN}" | jq -r '.conclusion // empty')
+                
+                if [[ "${STATUS}" == "completed" ]]; then
+                  echo "Workspace Smoke Tests completed with conclusion: ${CONCLUSION}"
+                  # Brief pause to ensure comment is persisted in GitHub PR API
+                  sleep 5
+                  break
+                fi
+                echo "[DEBUG] Waiting for Workspace Smoke Tests (status: ${STATUS:-queued})... (${i}/120)"
+                sleep 5
+              done
             fi
           fi
 
