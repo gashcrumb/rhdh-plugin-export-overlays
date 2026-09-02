@@ -8,7 +8,8 @@ on:
   workflow_run:
     workflows:
       - "Pull Request Actions"
-      - "Run Workspace Smoke Tests"
+      - "Workspace Smoke Tests"
+      - "Run Plugin Smoke Tests"
     types:
       - completed
 

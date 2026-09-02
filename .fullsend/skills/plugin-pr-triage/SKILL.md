@@ -65,24 +65,24 @@ LAST_PUBLISH_COMMENT=$(echo "${PR_JSON}" | jq -r '
 
 ## 3. Parsing Smoke Test Results (`workspace-tests.yaml`)
 
-Look for comments with `### Action 'smoketest' Execution Result` or `Smoke Test Summary`:
+Look for comments with `### Action 'smoketest' Execution Result`, `Smoke Test Summary`, `[Smoke tests workflow]`, or `[Smoke test workflow]`:
 
 ```bash
 LAST_SMOKE_COMMENT=$(echo "${PR_JSON}" | jq -r '
-  [.comments[] | select(.body | contains("Action '\''smoketest'\''") or contains("Smoke Test Summary"))] | last | .body // empty
+  [.comments[] | select(.body | contains("Action '\''smoketest'\''") or contains("Smoke Test Summary") or contains("Smoke tests workflow") or contains("Smoke test workflow"))] | last | .body // empty
 ')
 ```
 
 ### Analysis Heuristics:
 1. **Success**:
-   - Contains: `All plugin packages loaded successfully in container` or 0 failed packages.
+   - Contains: `All plugin packages loaded successfully in container`, `0 failed packages`, or `[Smoke tests workflow](...) succeeded`.
    - Outcome: Proceed to E2E check.
 2. **Missing Environment Variables**:
-   - Look for: `Missing required environment variable: ([A-Z0-9_]+)` or `Plugin skipped loading due to missing environment variable`.
+   - Look for: `Missing required environment variable: ([A-Z0-9_]+)`, `missing workspace \`smoke-tests/test.env\` file`, or `Plugin skipped loading due to missing environment variable`.
    - Outcome: Use `metadata-remediation` skill to add dummy values to `workspaces/<workspace>/smoke-tests/test.env` and issue `/smoketest`.
-3. **Container Crash / Incompatible Export**:
-   - Look for: `FATAL`, `Cannot find module`, or `Plugin failed to initialize`.
-   - Outcome: If caused by missing export or dependency mismatch, inspect `patches/` or escalate to maintainers.
+3. **Container Crash / Node Error / Assertion Failure**:
+   - Look for: `Error logs from container`, `Assertion failed`, `FATAL`, `Cannot find module`, `Segmentation fault`, or `Plugin failed to initialize`.
+   - Outcome: If container fails to boot with Node/V8 assertion errors or missing exports, diagnose if a configuration fix (like `test.env`) or patch is possible, or escalate with full trace details to maintainers (`status: "escalate_to_human"`).
 
 ---
 

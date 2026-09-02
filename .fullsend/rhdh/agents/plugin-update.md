@@ -176,21 +176,24 @@ Inspect PR comments for bot comments containing `[Publish workflow]`, `[Override
    - Detection: `Publishing process: ✅ Finished successfully` with 0 validation errors and no incompatible workspaces.
    - Stage: `publish_evaluation`
    - Next Action:
-     - If smoke test has not yet run: Issue `/smoketest`.
-     - If smoke test already passed and `has_e2e_tests: true`: Issue `/test e2e-ocp-helm`.
-     - If all tests complete: Set `stage: "completed"`, `status: "ready_for_review"`.
+     - Check if smoke test workflow has completed:
+       - If smoke test comment is NOT yet posted: Set `status: "pending_ci"`, awaiting smoke test workflow completion.
+       - If smoke test failed: Proceed to Smoke Test Evaluation (Section 3.2).
+       - If smoke test passed and `has_e2e_tests: true`: Proceed to E2E evaluation (Section 3.3).
+       - If smoke test passed and `has_e2e_tests: false`: Set `stage: "completed"`, `status: "ready_for_review"`.
 
 ---
 
 ### 3.2 Evaluating Smoke Test Results (`workspace-tests.yaml`)
 
-Inspect PR comments for `### Action 'smoketest' Execution Result` or `Smoke Test Summary`:
+Inspect PR comments for `### Action 'smoketest' Execution Result`, `Smoke Test Summary`, `[Smoke tests workflow]`, or `[Smoke test workflow]`:
 
 1. **Smoke Tests Passed ✅**:
-   - Proceed to E2E evaluation (Section 3.3).
+   - If `has_e2e_tests: true`: Issue `/test e2e-ocp-helm` (if not already triggered) and proceed to E2E evaluation (Section 3.3).
+   - If `has_e2e_tests: false`: Set `stage: "completed"`, `status: "ready_for_review"`.
 
 2. **Smoke Tests Skipped / Missing Environment Variables**:
-   - Detection: Container logs report `Missing required environment variable: KEY` or `plugin skipped due to missing config`.
+   - Detection: Container logs report `Missing required environment variable: KEY`, `missing workspace \`smoke-tests/test.env\` file`, or `plugin skipped due to missing config`.
    - Remediation:
      - Create or edit `workspaces/<workspace>/smoke-tests/test.env`:
        ```env
@@ -200,10 +203,11 @@ Inspect PR comments for `### Action 'smoketest' Execution Result` or `Smoke Test
      - Set `commit_message: "chore(${WORKSPACE}): add required dummy env vars for smoke testing"`.
      - Slash Command: `/smoketest`
 
-3. **Smoke Tests Failed with Fatal Plugin Boot Crash**:
-   - If crash is due to missing export overlay or patch conflict that cannot be trivially resolved:
+3. **Smoke Tests Failed with Fatal Plugin Boot Crash / Assertion Failure**:
+   - Detection: Comment contains `[Smoke tests workflow](...) failed`, `Error logs from container`, `Assertion failed`, or `FATAL`.
+   - If crash is due to upstream package incompatibilities, native module assertion failures, or patch conflicts that cannot be remediated via config/metadata:
      - Status: `escalate_to_human`
-     - Comment Body: Provide detailed crash trace, affected packages, and suggested human next steps.
+     - Comment Body: Detail the container boot failure log, affected plugin package(s), and escalation rationale.
 
 ---
 
