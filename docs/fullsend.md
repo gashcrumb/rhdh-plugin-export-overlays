@@ -15,6 +15,7 @@
 | Review | Auto-triggers on PR open/update | Automatic for `workspaces/backstage-plugins-for-aws/` PRs |
 | Fix | `/fs-fix` slash command, or `changes_requested` review | Post on a PR, or request changes on a fullsend PR |
 | E2E Triage | Auto-triggers nightly via `e2e-triage` label | Discovers failed nightly E2E runs, classifies per workspace, creates issues for the code agent |
+| Plugin Update | Auto-triggers on `workspace-update` label & CI completions | Autonomous coordinator for automated plugin update PRs ([Docs](fullsend-plugin-update-automation.md)) |
 
 ### Auto-trigger vs. manual trigger
 
@@ -25,6 +26,7 @@
 | Review | **Auto-triggers on `workspaces/backstage-plugins-for-aws/` PRs.** Scoped via `paths` filter. | `/fs-review` on any PR (auth-gated) |
 | Fix | Only auto-fires from bot reviews, not from human reviews. | `/fs-fix` on a PR, `/fs-fix-stop` to disable |
 | E2E Triage | **Auto-triggers nightly.** `e2e-triage-agent.yaml` discovers failed nightly runs, creates a labeled issue → fullsend dispatch routes to `e2e-triage` agent → agent classifies failures → post-script creates per-workspace issues with `ready-to-code` → code agent picks up each issue. | Manually run `e2e-triage-agent.yaml` workflow |
+| Plugin Update | **Auto-triggers on PRs labeled `workspace-update` and subsequent CI completions.** `plugin-update-ci-bridge.yaml` listens to `Pull Request Actions` and `Workspace Smoke Tests` completions and dispatches the agent to evaluate results and apply fixes. | `/fs-plugin-update` on a PR (auth-gated) |
 
 ### Scope details
 
@@ -52,6 +54,7 @@ Slash commands are **restricted to org members and collaborators** via an `autho
 | `/fs-review` | Run review on a PR |
 | `/fs-fix` | Fix issues flagged in a review |
 | `/fs-fix-stop` | Disable fix agent for a PR (adds `fullsend-no-fix` label) |
+| `/fs-plugin-update` | Trigger plugin update agent lifecycle evaluation on a PR |
 
 ## How to expand review to more workspaces
 
@@ -185,11 +188,12 @@ Fullsend uses GCP Workload Identity Federation (WIF) to authenticate GitHub Acti
 
 | Path | Purpose |
 |------|---------|
-| `.fullsend/config.yaml` | Declares enabled agents (code, fix, review, e2e-triage) and roles |
+| `.fullsend/config.yaml` | Declares enabled agents (code, fix, review, e2e-triage, plugin-update) and roles |
 | `.fullsend/rhdh/` | Custom agents, harnesses, policies, schemas, scripts, and skills |
 | `.fullsend/customized/` | Scaffold stubs for future agent/harness/policy/skill customizations |
 | `.fullsend/customized/scripts/pre-fix-rebase.sh` | Auto-rebase before fix agent runs |
-| `.github/workflows/fullsend.yaml` | Event shim with auth gate on slash commands |
+| `.github/workflows/fullsend.yaml` | Event shim with auth gate on slash commands and PR labels |
+| `.github/workflows/plugin-update-ci-bridge.yaml` | CI completion bridge workflow dispatching the plugin-update agent |
 | `.github/workflows/e2e-triage-agent.yaml` | Nightly E2E failure discovery → creates labeled issue for triage agent |
 
 ## Debugging
