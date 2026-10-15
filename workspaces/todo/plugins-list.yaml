@@ -1,2 +1,3 @@
+# test: verify smoke tests and E2E gating (RHIDP-17922)
 plugins/todo:
 plugins/todo-backend:
