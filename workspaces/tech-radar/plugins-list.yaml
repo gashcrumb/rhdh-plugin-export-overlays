@@ -1,2 +1,3 @@
+# test: verify post-smoke E2E dispatch (RHIDP-17922)
 plugins/tech-radar:
 plugins/tech-radar-backend:
