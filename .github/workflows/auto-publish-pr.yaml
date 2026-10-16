@@ -391,7 +391,7 @@ jobs:
       needs.detect-changes.outputs.only-metadata-changed != 'true' &&
       needs.preflight.result == 'success'
 
-    uses: redhat-developer/rhdh-plugin-export-utils/.github/workflows/export-workspaces-as-dynamic.yaml@main
+    uses: gashcrumb/rhdh-plugin-export-utils/.github/workflows/export-workspaces-as-dynamic.yaml@feat/fast-fail-validate-metadata
     with:
       overlay-branch: ${{ needs.prepare.outputs.overlay-branch }}
       overlay-repo: ${{ needs.prepare.outputs.overlay-repo }}
