@@ -345,11 +345,19 @@ jobs:
       metadata-files-count: ${{ steps.run-preflight.outputs.metadata-files-count }}
 
     steps:
-      - name: Checkout overlay repository
+      - name: Checkout workflow repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: |
+            scripts/check_workspace_preflight.py
+          sparse-checkout-cone-mode: false
+
+      - name: Checkout PR repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: ${{ needs.prepare.outputs.overlay-repo }}
           ref: ${{ needs.prepare.outputs.overlay-branch }}
+          path: overlay-repo
 
       - name: Run Stage 1 Static Preflight
         id: run-preflight
@@ -358,8 +366,13 @@ jobs:
           if [[ "${{ needs.detect-changes.outputs.only-e2e-tests-changed }}" == "true" ]]; then
             ALLOW_INCOMPATIBLE="--allow-incompatible-backstage"
           fi
-          python3 scripts/check_workspace_preflight.py \
-            --workspace "${{ needs.prepare.outputs.workspace }}" \
+          SCRIPT="scripts/check_workspace_preflight.py"
+          if [[ -f "overlay-repo/scripts/check_workspace_preflight.py" ]]; then
+            SCRIPT="overlay-repo/scripts/check_workspace_preflight.py"
+          fi
+          python3 "$SCRIPT" \
+            --workspace "overlay-repo/${{ needs.prepare.outputs.workspace }}" \
+            --versions-file "overlay-repo/versions.json" \
             $ALLOW_INCOMPATIBLE
 
   export:

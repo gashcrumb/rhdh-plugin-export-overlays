@@ -309,25 +309,44 @@ def run_preflight(
     """Execute the complete Stage 1 static preflight check."""
     root = repo_root or find_repo_root()
 
-    # Resolve workspace path
-    ws_clean = workspace.strip().rstrip("/")
-    if not ws_clean.startswith("workspaces/"):
-        ws_clean = f"workspaces/{ws_clean}"
-    ws_path = root / ws_clean
+    # Resolve workspace path flexibly (supports direct directory paths, 'workspaces/name', or 'name')
+    raw_path = Path(workspace)
+    if raw_path.is_dir():
+        ws_path = raw_path.resolve()
+        if ws_path.parent.name == "workspaces":
+            ws_clean = f"workspaces/{ws_path.name}"
+        else:
+            ws_clean = str(raw_path).rstrip("/")
+    else:
+        candidate = root / workspace
+        if candidate.is_dir():
+            ws_path = candidate.resolve()
+            ws_clean = workspace.strip().rstrip("/")
+        else:
+            ws_clean = workspace.strip().rstrip("/")
+            if not ws_clean.startswith("workspaces/"):
+                ws_clean = f"workspaces/{ws_clean}"
+            ws_path = (root / ws_clean).resolve()
 
     if not ws_path.is_dir():
         return {
             "workspace": ws_clean,
             "preflight_passed": False,
             "failure_reason": "invalid_metadata_schema",
-            "failure_details": f"Workspace directory not found: {ws_clean}",
+            "failure_details": f"Workspace directory not found: {workspace}",
             "stages": {},
         }
 
     # Resolve target Backstage version
     target_bs = target_backstage_version
     if not target_bs:
-        v_path = Path(versions_file) if versions_file else root / "versions.json"
+        if versions_file:
+            v_path = Path(versions_file).resolve()
+        elif (ws_path.parent.parent / "versions.json").is_file():
+            v_path = ws_path.parent.parent / "versions.json"
+        else:
+            v_path = root / "versions.json"
+
         if not v_path.is_file():
             return {
                 "workspace": ws_clean,
