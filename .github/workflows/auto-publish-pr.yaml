@@ -586,18 +586,24 @@ jobs:
             if (checkUpToDateResult === 'failure') {
               body = `[Publish workflow](${workflowRun.data.html_url}) — blocked: \`versions.json\` is not up-to-date with the base branch.`;
             } else if (preflightResult === 'failure') {
-              body = `[Publish workflow](${workflowRun.data.html_url}) has completed with failure.\n\n`;
-              body += `#### ❌ Stage 1: Static Preflight Gate Failed\n`;
-              if (preflightFailureReason) {
-                body += `**Failure Reason:** \`${preflightFailureReason}\`\n\n`;
-              }
+              body = `### ❌ Publish Workflow Halted (Stage 1: Static Preflight Gate)\n\n`;
+              body += `The [Publish workflow run](${workflowRun.data.html_url}) was halted before container builds began due to preflight validation errors.\n\n`;
+              body += `| Stage | Status | Details |\n`;
+              body += `|---|---|---|\n`;
+              body += `| **Stage 1: Static Preflight Gate** | ❌ **Failed** | \`${preflightFailureReason || 'Validation error'}\` |\n`;
+              body += `| **Stage 2: Dynamic Export & Container Build** | ⏭️ **Skipped** | Halted to avoid failed container builds |\n`;
+              body += `| **Stage 3: Workspace Smoke Tests** | ⏭️ **Skipped** | Skipped due to preflight failure |\n\n`;
+
               if (preflightFailureDetails) {
-                body += `**Details:**\n\`\`\`\n${preflightFailureDetails}\n\`\`\`\n\n`;
+                body += `#### 🔍 Diagnostic Details\n\`\`\`\n${preflightFailureDetails}\n\`\`\`\n\n`;
               }
-              if (preflightFailureReason === 'backstage_version_mismatch') {
-                body += `> **Remediation:** Add \`workspaces/<workspace>/backstage.json\` with \`{"version": "..."}\` matching target release or post the \`/override-backstage\` PR comment.\n`;
-              } else {
-                body += `> **Remediation:** Correct Package CRD metadata in \`workspaces/<workspace>/metadata/\` ensuring valid schemas and required fields.\n`;
+
+              body += `#### 💡 Recommended Remediation\n`;
+              if (preflightFailureReason && preflightFailureReason.includes('backstage_version_mismatch')) {
+                body += `- **Backstage Version Mismatch:** Add \`workspaces/<workspace>/backstage.json\` with \`{"version": "..."}\` matching target release or post the \`/override-backstage\` PR comment.\n`;
+              }
+              if (preflightFailureReason && (preflightFailureReason.includes('invalid_metadata_schema') || preflightFailureReason.includes('missing_package_metadata'))) {
+                body += `- **Package Metadata Error:** Ensure all \`workspaces/<workspace>/metadata/*.yaml\` Package CRD files exist, have valid YAML syntax, and define all required schema fields (\`apiVersion: extensions.backstage.io/v1alpha1\`, \`kind: Package\`, \`metadata.name\`, \`spec.packageName\`, \`spec.version\`, \`spec.dynamicArtifact\`, and valid \`spec.backstage.role\`).\n`;
               }
             } else if (onlyMetadataChanged) {
               body = `[Publish workflow](${workflowRun.data.html_url}) — build skipped (only metadata files changed).`;

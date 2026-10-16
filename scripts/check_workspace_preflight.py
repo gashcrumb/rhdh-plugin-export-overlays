@@ -389,7 +389,7 @@ def run_preflight(
             failure_reasons.append(meta_result["reason"])
         failure_details.extend(meta_result["errors"])
 
-    primary_reason = failure_reasons[0] if failure_reasons else None
+    primary_reason = ", ".join(failure_reasons) if failure_reasons else None
     details_str = "\n".join(failure_details)
 
     return {
