@@ -585,13 +585,10 @@ jobs:
 
             let body;
             if (checkUpToDateResult === 'failure') {
-              body = `[Publish workflow](${workflowRun.data.html_url}) has completed with failure ❌.\n\n`;
-              body += `#### Versions Check\n`;
-              body += `❌ The \`versions.json\` file in your PR does not match the base branch.\n\n`;
+              body = `❌ [Publish workflow](${workflowRun.data.html_url}) is blocked: \`versions.json\` is not up-to-date with the base branch.\n\n`;
               body += `_Try updating it by adding the \`/update-versions\` PR comment._\n`;
             } else if (preflightResult === 'failure') {
-              body = `[Publish workflow](${workflowRun.data.html_url}) has completed with failure ❌.\n\n`;
-              body += `#### Stage 1: Static Preflight Gate\n`;
+              body = `❌ [Publish workflow](${workflowRun.data.html_url}) has completed with failure.\n\n`;
               body += `❌ Preflight check failed (\`${preflightFailureReason}\`).\n\n`;
 
               if (preflightFailureDetails) {
@@ -605,10 +602,12 @@ jobs:
                 body += `_Ensure all \`workspaces/<workspace>/metadata/*.yaml\` Package CRD files exist, have valid YAML syntax, and define all required schema fields._\n\n`;
               }
             } else if (onlyMetadataChanged) {
-              body = `[Publish workflow](${workflowRun.data.html_url}) has completed with ${ success ? 'success ✅' : 'failure ❌' }.\n\n`;
+              const statusIcon = success ? '✅' : '❌';
+              body = `${statusIcon} [Publish workflow](${workflowRun.data.html_url}) has completed with ${ success ? 'success' : 'failure' }.\n\n`;
               body += `#### Publishing process\nℹ️ Build skipped (only metadata files changed).\n`;
             } else {
-              body = `[Publish workflow](${workflowRun.data.html_url}) has completed with ${ publishSuccess ? 'success ✅' : 'failure ❌' }.\n\n`;
+              const statusIcon = publishSuccess ? '✅' : '❌';
+              body = `${statusIcon} [Publish workflow](${workflowRun.data.html_url}) has completed with ${ publishSuccess ? 'success' : 'failure' }.\n\n`;
 
               const publishedExports = core.getMultilineInput('published_exports');
               const failedExports = core.getMultilineInput('failed_exports');
