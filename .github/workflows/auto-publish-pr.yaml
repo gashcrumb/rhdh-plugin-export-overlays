@@ -586,7 +586,7 @@ jobs:
             if (checkUpToDateResult === 'failure') {
               body = `[Publish workflow](${workflowRun.data.html_url}) — blocked: \`versions.json\` is not up-to-date with the base branch.`;
             } else if (preflightResult === 'failure') {
-              body = `[Publish workflow](${workflowRun.data.html_url}) — Stage 1 Preflight check failed in <15s.\n\n`;
+              body = `[Publish workflow](${workflowRun.data.html_url}) has completed with failure.\n\n`;
               body += `#### ❌ Stage 1: Static Preflight Gate Failed\n`;
               if (preflightFailureReason) {
                 body += `**Failure Reason:** \`${preflightFailureReason}\`\n\n`;
