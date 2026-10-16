@@ -133,16 +133,17 @@ Use `/update-versions` when CI reports that `versions.json` on your PR does not 
 ### What `/publish` Does
 
 1. Checks out the overlay branch
-2. Clones the source repository at the specified `repo-ref`
-3. Applies any patches from `patches/`
-4. Installs dependencies
-5. Builds the plugins
-6. Exports as dynamic plugins
-7. Packages as OCI containers
-8. Publishes to `ghcr.io` with tag `pr_<number>__<version>`
-9. Posts OCI references as a PR comment
-10. Runs workspace smoke tests synchronously downstream within the same workflow run
-11. If smoke tests pass and the workspace contains an `e2e-tests/` directory, automatically triggers `/test e2e-ocp-helm`
+2. Runs Stage 1 Static Preflight check (`scripts/check_workspace_preflight.py` in <15s): validates Backstage version compatibility (`source.json` vs `versions.json`, honoring `backstage.json` overrides) and Package CRD schemas (`metadata/*.yaml`). If checks fail, halts immediately before building containers.
+3. Clones the source repository at the specified `repo-ref`
+4. Applies any patches from `patches/`
+5. Installs dependencies
+6. Builds the plugins
+7. Exports as dynamic plugins
+8. Packages as OCI containers
+9. Publishes to `ghcr.io` with tag `pr_<number>__<version>`
+10. Posts OCI references as a PR comment
+11. Runs workspace smoke tests synchronously downstream within the same workflow run
+12. If smoke tests pass and the workspace contains an `e2e-tests/` directory, automatically triggers `/test e2e-ocp-helm`
 
 ### What `/update-versions` Does
 

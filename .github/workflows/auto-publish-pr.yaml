@@ -12,6 +12,12 @@ on:
       only-metadata-changed:
         description: Whether only metadata files were modified
         value: ${{ jobs.detect-changes.outputs.only-metadata-changed }}
+      preflight-passed:
+        description: Whether Stage 1 static preflight check passed
+        value: ${{ jobs.preflight.outputs.preflight-passed }}
+      preflight-failure-reason:
+        description: Failure reason from Stage 1 static preflight check
+        value: ${{ jobs.preflight.outputs.failure-reason }}
 
 jobs:
   prepare:
@@ -315,8 +321,8 @@ jobs:
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
 
-  export:
-    name: Publish PR Dynamic Plugin Images
+  preflight:
+    name: "Stage 1: Static Preflight Gate"
     needs:
       - prepare
       - check-up-to-date
@@ -327,6 +333,49 @@ jobs:
       needs.prepare.outputs.workspace != '' &&
       (needs.check-up-to-date.result == 'success' || needs.check-up-to-date.result == 'skipped') &&
       needs.detect-changes.outputs.only-metadata-changed != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      preflight-passed: ${{ steps.run-preflight.outputs.preflight-passed }}
+      failure-reason: ${{ steps.run-preflight.outputs.failure-reason }}
+      failure-details: ${{ steps.run-preflight.outputs.failure-details }}
+      effective-backstage-version: ${{ steps.run-preflight.outputs.effective-backstage-version }}
+      target-backstage-version: ${{ steps.run-preflight.outputs.target-backstage-version }}
+      has-backstage-override: ${{ steps.run-preflight.outputs.has-backstage-override }}
+      metadata-files-count: ${{ steps.run-preflight.outputs.metadata-files-count }}
+
+    steps:
+      - name: Checkout overlay repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ needs.prepare.outputs.overlay-repo }}
+          ref: ${{ needs.prepare.outputs.overlay-branch }}
+
+      - name: Run Stage 1 Static Preflight
+        id: run-preflight
+        run: |
+          ALLOW_INCOMPATIBLE=""
+          if [[ "${{ needs.detect-changes.outputs.only-e2e-tests-changed }}" == "true" ]]; then
+            ALLOW_INCOMPATIBLE="--allow-incompatible-backstage"
+          fi
+          python3 scripts/check_workspace_preflight.py \
+            --workspace "${{ needs.prepare.outputs.workspace }}" \
+            $ALLOW_INCOMPATIBLE
+
+  export:
+    name: Publish PR Dynamic Plugin Images
+    needs:
+      - prepare
+      - check-up-to-date
+      - detect-changes
+      - preflight
+    if: |
+      always() &&
+      needs.prepare.result == 'success' &&
+      needs.prepare.outputs.workspace != '' &&
+      (needs.check-up-to-date.result == 'success' || needs.check-up-to-date.result == 'skipped') &&
+      needs.detect-changes.outputs.only-metadata-changed != 'true' &&
+      needs.preflight.result == 'success'
 
     uses: redhat-developer/rhdh-plugin-export-utils/.github/workflows/export-workspaces-as-dynamic.yaml@main
     with:
@@ -409,9 +458,11 @@ jobs:
     needs:
       - prepare
       - detect-changes
+      - preflight
     if: |
       needs.prepare.outputs.workspace != '' &&
-      needs.detect-changes.outputs.only-metadata-changed != 'true'
+      needs.detect-changes.outputs.only-metadata-changed != 'true' &&
+      needs.preflight.result == 'success'
 
     uses: redhat-developer/rhdh-plugin-export-utils/.github/workflows/check-backstage-compatibility.yaml@main
     with:
@@ -428,6 +479,7 @@ jobs:
       - prepare
       - check-up-to-date
       - detect-changes
+      - preflight
       - export
       - check-backstage-compatibility
       - validate-metadata-only
@@ -463,6 +515,10 @@ jobs:
           INPUT_METADATA_WARNING_PACKAGES: ${{ needs.validate-metadata-only.outputs.metadata-warning-packages }}
           INPUT_METADATA_WARNING_COUNT: ${{ needs.validate-metadata-only.outputs.metadata-warning-count }}
           INPUT_CHECK_UP_TO_DATE_RESULT: ${{ needs.check-up-to-date.result }}
+          INPUT_PREFLIGHT_RESULT: ${{ needs.preflight.result }}
+          INPUT_PREFLIGHT_PASSED: ${{ needs.preflight.outputs.preflight-passed }}
+          INPUT_PREFLIGHT_FAILURE_REASON: ${{ needs.preflight.outputs.failure-reason }}
+          INPUT_PREFLIGHT_FAILURE_DETAILS: ${{ needs.preflight.outputs.failure-details }}
           INPUT_EXPORT_RESULT: ${{ needs.export.result }}
           INPUT_CHECK_BACKSTAGE_COMPATIBILITY_RESULT: ${{ needs.check-backstage-compatibility.result }}
           INPUT_VALIDATE_METADATA_RESULT: ${{ needs.validate-metadata-only.result }}
@@ -473,6 +529,9 @@ jobs:
             const prNumber = Number(core.getInput('pr_number'));
             const onlyMetadataChanged = core.getInput('only_metadata_changed') === 'true';
             const checkUpToDateResult = core.getInput('check_up_to_date_result');
+            const preflightResult = core.getInput('preflight_result');
+            const preflightFailureReason = core.getInput('preflight_failure_reason');
+            const preflightFailureDetails = core.getInput('preflight_failure_details');
             const exportResult = core.getInput('export_result');
             const checkBackstageCompatibilityResult = core.getInput('check_backstage_compatibility_result');
             const workflowRun = await github.rest.actions.getWorkflowRun({
@@ -486,6 +545,9 @@ jobs:
             if (checkUpToDateResult === 'failure') {
               success = false;
               publishSuccess = false;
+            } else if (preflightResult === 'failure') {
+              success = false;
+              publishSuccess = false;
             } else if (onlyMetadataChanged) {
               const validateResult = core.getInput('validate_metadata_result');
               const detectResult = core.getInput('detect_changes_result');
@@ -494,7 +556,7 @@ jobs:
               publishSuccess = false;
             } else {
               publishSuccess = exportResult === 'success';
-              success = publishSuccess && checkBackstageCompatibilityResult === 'success';
+              success = publishSuccess && (checkBackstageCompatibilityResult === 'success' || checkBackstageCompatibilityResult === 'skipped');
             }
 
             await github.rest.repos.createCommitStatus({
@@ -510,6 +572,20 @@ jobs:
             let body;
             if (checkUpToDateResult === 'failure') {
               body = `[Publish workflow](${workflowRun.data.html_url}) — blocked: \`versions.json\` is not up-to-date with the base branch.`;
+            } else if (preflightResult === 'failure') {
+              body = `[Publish workflow](${workflowRun.data.html_url}) — Stage 1 Preflight check failed in <15s.\n\n`;
+              body += `#### ❌ Stage 1: Static Preflight Gate Failed\n`;
+              if (preflightFailureReason) {
+                body += `**Failure Reason:** \`${preflightFailureReason}\`\n\n`;
+              }
+              if (preflightFailureDetails) {
+                body += `**Details:**\n\`\`\`\n${preflightFailureDetails}\n\`\`\`\n\n`;
+              }
+              if (preflightFailureReason === 'backstage_version_mismatch') {
+                body += `> **Remediation:** Add \`workspaces/<workspace>/backstage.json\` with \`{"version": "..."}\` matching target release or post the \`/override-backstage\` PR comment.\n`;
+              } else {
+                body += `> **Remediation:** Correct Package CRD metadata in \`workspaces/<workspace>/metadata/\` ensuring valid schemas and required fields.\n`;
+              }
             } else if (onlyMetadataChanged) {
               body = `[Publish workflow](${workflowRun.data.html_url}) — build skipped (only metadata files changed).`;
             } else {
