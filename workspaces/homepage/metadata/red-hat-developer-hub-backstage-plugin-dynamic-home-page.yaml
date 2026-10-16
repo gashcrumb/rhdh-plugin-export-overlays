@@ -1,0 +1,14 @@
+apiVersion: extensions.backstage.io/v1alpha1
+kind: Package
+metadata:
+  name: red-hat-developer-hub-backstage-plugin-dynamic-home-page
+spec:
+  packageName: '@red-hat-developer-hub/backstage-plugin-dynamic-home-page'
+  dynamicArtifact: ./dynamic-plugins/dist/red-hat-developer-hub-backstage-plugin-dynamic-home-page
+  version: 1.13.4
+  backstage:
+    role: frontend-plugin
+    supportedVersions: 1.49.3
+  author: Red Hat
+  support: generally-available
+  lifecycle: active
