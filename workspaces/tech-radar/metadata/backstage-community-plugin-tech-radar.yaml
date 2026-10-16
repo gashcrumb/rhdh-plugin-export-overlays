@@ -19,7 +19,7 @@ spec:
   dynamicArtifact: oci://ghcr.io/redhat-developer/rhdh-plugin-export-overlays/backstage-community-plugin-tech-radar:bs_1.54.9__1.22.0
   version: 1.22.0
   backstage:
-    role: invalid-role-test
+    role: frontend-plugin
     supportedVersions: 1.54.9
   author: Red Hat
   support: generally-available
