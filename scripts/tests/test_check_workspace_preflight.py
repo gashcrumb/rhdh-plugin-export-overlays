@@ -81,6 +81,24 @@ def test_check_package_metadata_real_tech_radar():
     assert len(res["errors"]) == 0
 
 
+def test_check_package_metadata_prefix_matching():
+    ws_path = ROOT / "workspaces/tech-radar"
+    # Matches upstream prefix
+    res = check_package_metadata(
+        ws_path,
+        image_repository_prefix="ghcr.io/redhat-developer/rhdh-plugin-export-overlays",
+    )
+    assert res["passed"] is True
+
+    # Mismatches when expecting a different prefix
+    res_mismatch = check_package_metadata(
+        ws_path,
+        image_repository_prefix="ghcr.io/gashcrumb/rhdh-plugin-export-overlays",
+    )
+    assert res_mismatch["passed"] is False
+    assert any("OCI reference mismatch" in e for e in res_mismatch["errors"])
+
+
 def test_check_package_metadata_missing_plugins_list(tmp_path: Path):
     ws = tmp_path / "workspaces/test-ws"
     ws.mkdir(parents=True)

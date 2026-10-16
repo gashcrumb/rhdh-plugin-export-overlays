@@ -58,6 +58,11 @@ def get_minor_version(version_str: str | None) -> str:
     return str(version_str).strip()
 
 
+def package_name_to_image_name(pkg_name: str) -> str:
+    """Derive default container image name from packageName (e.g. '@scope/foo' -> 'scope-foo')."""
+    return pkg_name.lstrip("@").replace("/", "-")
+
+
 def check_backstage_compatibility(
     workspace_path: Path,
     target_backstage_version: str,
@@ -161,7 +166,9 @@ def check_backstage_compatibility(
     }
 
 
-def check_package_metadata(workspace_path: Path) -> dict[str, Any]:
+def check_package_metadata(
+    workspace_path: Path, image_repository_prefix: str | None = None
+) -> dict[str, Any]:
     """Statically validate plugins-list.yaml and Package CRD schemas in metadata/*.yaml."""
     plugins_list_path = workspace_path / "plugins-list.yaml"
     metadata_dir = workspace_path / "metadata"
@@ -271,6 +278,14 @@ def check_package_metadata(workspace_path: Path) -> dict[str, Any]:
         dynamic_artifact = spec_block.get("dynamicArtifact")
         if not dynamic_artifact or not isinstance(dynamic_artifact, str):
             errors.append(f"{fname}: missing or invalid 'spec.dynamicArtifact'")
+        elif image_repository_prefix and dynamic_artifact.startswith("oci://ghcr.io/"):
+            expected_image = package_name_to_image_name(pkg_name or "")
+            ref_no_tag = dynamic_artifact.rsplit(":", 1)[0]
+            expected_ref = f"oci://{image_repository_prefix}/{expected_image}"
+            if ref_no_tag != expected_ref:
+                errors.append(
+                    f"{fname}: OCI reference mismatch: expected \"{expected_ref}\" but got \"{ref_no_tag}\""
+                )
 
         bs_block = spec_block.get("backstage")
         if not isinstance(bs_block, dict):
@@ -304,6 +319,7 @@ def run_preflight(
     target_backstage_version: str | None = None,
     versions_file: str | None = None,
     allow_incompatible_backstage: bool = False,
+    image_repository_prefix: str | None = None,
     repo_root: Path | None = None,
 ) -> dict[str, Any]:
     """Execute the complete Stage 1 static preflight check."""
@@ -371,7 +387,9 @@ def run_preflight(
     bs_result = check_backstage_compatibility(
         ws_path, target_bs, allow_incompatible=allow_incompatible_backstage
     )
-    meta_result = check_package_metadata(ws_path)
+    meta_result = check_package_metadata(
+        ws_path, image_repository_prefix=image_repository_prefix
+    )
 
     preflight_passed = bs_result["passed"] and meta_result["passed"]
 
@@ -520,6 +538,11 @@ def main() -> int:
         help="Warn instead of fail when Backstage version mismatches (used on E2E-only PRs)",
     )
     parser.add_argument(
+        "--image-repository-prefix",
+        default=None,
+        help="Expected image repository prefix to validate OCI references (e.g. 'ghcr.io/owner/repo')",
+    )
+    parser.add_argument(
         "--github-output",
         default=os.environ.get("GITHUB_OUTPUT"),
         help="Path to $GITHUB_OUTPUT file",
@@ -542,6 +565,7 @@ def main() -> int:
         target_backstage_version=args.target_backstage,
         versions_file=args.versions_file,
         allow_incompatible_backstage=args.allow_incompatible_backstage,
+        image_repository_prefix=args.image_repository_prefix,
     )
 
     if args.json:

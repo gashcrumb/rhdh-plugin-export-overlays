@@ -373,6 +373,7 @@ jobs:
           python3 "$SCRIPT" \
             --workspace "overlay-repo/${{ needs.prepare.outputs.workspace }}" \
             --versions-file "overlay-repo/versions.json" \
+            --image-repository-prefix "${{ needs.prepare.outputs.image-repository-prefix }}" \
             $ALLOW_INCOMPATIBLE
 
   export:
@@ -584,31 +585,30 @@ jobs:
 
             let body;
             if (checkUpToDateResult === 'failure') {
-              body = `[Publish workflow](${workflowRun.data.html_url}) — blocked: \`versions.json\` is not up-to-date with the base branch.`;
+              body = `[Publish workflow](${workflowRun.data.html_url}) has completed with failure ❌.\n\n`;
+              body += `#### Versions Check\n`;
+              body += `❌ The \`versions.json\` file in your PR does not match the base branch.\n\n`;
+              body += `_Try updating it by adding the \`/update-versions\` PR comment._\n`;
             } else if (preflightResult === 'failure') {
-              body = `### ❌ Publish Workflow Halted (Stage 1: Static Preflight Gate)\n\n`;
-              body += `The [Publish workflow run](${workflowRun.data.html_url}) was halted before container builds began due to preflight validation errors.\n\n`;
-              body += `| Stage | Status | Details |\n`;
-              body += `|---|---|---|\n`;
-              body += `| **Stage 1: Static Preflight Gate** | ❌ **Failed** | \`${preflightFailureReason || 'Validation error'}\` |\n`;
-              body += `| **Stage 2: Dynamic Export & Container Build** | ⏭️ **Skipped** | Halted to avoid failed container builds |\n`;
-              body += `| **Stage 3: Workspace Smoke Tests** | ⏭️ **Skipped** | Skipped due to preflight failure |\n\n`;
+              body = `[Publish workflow](${workflowRun.data.html_url}) has completed with failure ❌.\n\n`;
+              body += `#### Stage 1: Static Preflight Gate\n`;
+              body += `❌ Preflight check failed (\`${preflightFailureReason}\`).\n\n`;
 
               if (preflightFailureDetails) {
-                body += `#### 🔍 Diagnostic Details\n\`\`\`\n${preflightFailureDetails}\n\`\`\`\n\n`;
+                body += `**Details:**\n\`\`\`\n${preflightFailureDetails}\n\`\`\`\n\n`;
               }
 
-              body += `#### 💡 Recommended Remediation\n`;
               if (preflightFailureReason && preflightFailureReason.includes('backstage_version_mismatch')) {
-                body += `- **Backstage Version Mismatch:** Add \`workspaces/<workspace>/backstage.json\` with \`{"version": "..."}\` matching target release or post the \`/override-backstage\` PR comment.\n`;
+                body += `_Add \`workspaces/<workspace>/backstage.json\` with \`{"version": "..."}\` matching target release or post the \`/override-backstage\` PR comment._\n\n`;
               }
               if (preflightFailureReason && (preflightFailureReason.includes('invalid_metadata_schema') || preflightFailureReason.includes('missing_package_metadata'))) {
-                body += `- **Package Metadata Error:** Ensure all \`workspaces/<workspace>/metadata/*.yaml\` Package CRD files exist, have valid YAML syntax, and define all required schema fields (\`apiVersion: extensions.backstage.io/v1alpha1\`, \`kind: Package\`, \`metadata.name\`, \`spec.packageName\`, \`spec.version\`, \`spec.dynamicArtifact\`, and valid \`spec.backstage.role\`).\n`;
+                body += `_Ensure all \`workspaces/<workspace>/metadata/*.yaml\` Package CRD files exist, have valid YAML syntax, and define all required schema fields._\n\n`;
               }
             } else if (onlyMetadataChanged) {
-              body = `[Publish workflow](${workflowRun.data.html_url}) — build skipped (only metadata files changed).`;
+              body = `[Publish workflow](${workflowRun.data.html_url}) has completed with ${ success ? 'success ✅' : 'failure ❌' }.\n\n`;
+              body += `#### Publishing process\nℹ️ Build skipped (only metadata files changed).\n`;
             } else {
-              body = `[Publish workflow](${workflowRun.data.html_url}) has completed with ${ publishSuccess ? 'success' : 'failure' }.`;
+              body = `[Publish workflow](${workflowRun.data.html_url}) has completed with ${ publishSuccess ? 'success ✅' : 'failure ❌' }.\n\n`;
 
               const publishedExports = core.getMultilineInput('published_exports');
               const failedExports = core.getMultilineInput('failed_exports');
